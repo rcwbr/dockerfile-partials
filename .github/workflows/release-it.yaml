@@ -3,7 +3,8 @@ name: Release-it pre-release
 on: [pull_request]
 jobs:
   release-it:
-    runs-on: node:22.9.0
+    runs-on: ubuntu-24.04
+    container: node:22.9.0
     steps:
       - uses: actions/checkout@v2
         with:
