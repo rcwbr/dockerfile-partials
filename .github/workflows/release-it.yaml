@@ -1,0 +1,15 @@
+name: Release-it pre-release
+
+on: [pull_request]
+jobs:
+  release-it:
+    runs-on: ubuntu-24.04
+    container: node:22.9.0
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Install release-it
+        run: npm install -g release-it
+      - name: Dry run release-it
+        run: release-it --dry-run
