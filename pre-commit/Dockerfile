@@ -8,6 +8,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
   && apt-get install --allow-unauthenticated --no-install-recommends -y \
     git \
   && rm -rf /var/lib/apt/lists/*
+COPY pre-commit /usr/local/bin
 # Assume root role for installs
 USER ${USER}
 SHELL [ "/bin/bash", "-c" ]
@@ -22,4 +23,6 @@ RUN \
   && cp /tmp/.pre-commit-config.yaml . \
   && git init . \
   && pip install pre-commit \
-  && pre-commit install-hooks
+  && pre-commit install-hooks \
+  && cd \
+  && rm -rf $HOME/tmp_repo

@@ -1,6 +1,10 @@
 name: Push workflow
 on: push
 jobs:
+  devcontainer-cache-build:
+    uses: rcwbr/devcontainer-cache-build/.github/workflows/devcontainer-cache-build.yaml@0.1.0
+    permissions:
+      packages: write
   release-it-workflow:
     uses: rcwbr/release-it-gh-workflow/.github/workflows/release-it-workflow.yaml@0.2.0
     with:

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+echo Test3
+
+PATH=$HOME/pre-commit-venv/bin:$PATH pre-commit $@
