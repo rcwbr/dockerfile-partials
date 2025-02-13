@@ -8,6 +8,11 @@ jobs:
       app-environment: Repo release
     secrets:
       app-secret: ${{ secrets.RELEASE_IT_GITHUB_APP_KEY }} # Secret belonging to the Repo release environment
+  pre-commit:
+    uses: ./.github/workflows/pre-commit.yaml
+    needs: devcontainer-cache-build
+    with:
+      pre-commit-image: ${{ fromJSON(needs.devcontainer-cache-build.outputs.devcontainer-cache-image-all_configs).target.pre-commit.args.DEVCONTAINER_PRE_COMMIT_IMAGE }}
   dive-efficiency:
     name: Dive Docker image space efficiency analysis
     runs-on: ubuntu-24.04
