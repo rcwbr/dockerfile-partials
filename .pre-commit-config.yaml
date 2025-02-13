@@ -10,3 +10,26 @@ repos:
     - mdformat-shfmt
     - mdformat-tables
     - mdformat-toc
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  - id: check-added-large-files
+  - id: check-case-conflict
+  - id: check-executables-have-shebangs
+  - id: check-json
+  - id: check-merge-conflict
+  - id: check-shebang-scripts-are-executable
+  - id: check-symlinks
+  - id: check-toml
+  - id: check-vcs-permalinks
+  - id: check-yaml
+  - id: detect-private-key
+  - id: double-quote-string-fixer
+  - id: end-of-file-fixer
+  - id: forbid-submodules
+  - id: mixed-line-ending
+  - id: pretty-format-json
+    args: [--autofix]
+  - id: sort-simple-yaml
+    files: .pre-commit-config.yaml
+  - id: trailing-whitespace
