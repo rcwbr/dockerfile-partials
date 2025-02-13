@@ -1,4 +1,9 @@
 repos:
+# Using local hook to pin hadolint image version until resolution of https://github.com/hadolint/hadolint/issues/921
+# - repo: https://github.com/hadolint/hadolint
+#   rev: v2.12.0
+#   hooks:
+#     - id: hadolint-docker
 - repo: https://github.com/executablebooks/mdformat
   rev: 0.7.17
   hooks:
@@ -41,3 +46,9 @@ repos:
     language: docker_image
     entry: alpine/terragrunt:1.10.3 terragrunt hclfmt
     types: ["hcl"]
+  - id: hadolint-docker
+    name: Lint Dockerfiles
+    description: Runs hadolint Docker image to lint Dockerfiles
+    language: docker_image
+    types: ["dockerfile"]
+    entry: ghcr.io/hadolint/hadolint:2.12.0 hadolint
