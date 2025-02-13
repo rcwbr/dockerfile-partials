@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -e
+
+IFS=" " read -r -a PRE_COMMIT_ARGS <<< "$@"
+export PRE_COMMIT_ARGS
+
+docker run \
+  --rm \
+  --name pre-commit \
+  --user root \
+  --entrypoint bash \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$(pwd):$(pwd)" \
+  -w "$(pwd)" \
+  -e DEVCONTAINER_PRE_COMMIT \
+  "$DEVCONTAINER_PRE_COMMIT_IMAGE" \
+  -c "git config --global --add safe.directory $(pwd) && pre-commit ${PRE_COMMIT_ARGS[*]}"
+
+sudo chown -R "$USER:$USER" "$(pwd)"

@@ -5,6 +5,7 @@
   "mounts": [
     { "source": "/var/run/docker.sock", "target": "/var/run/docker.sock", "type": "bind" }
   ],
+  "onCreateCommand": "/opt/devcontainers/on_create_command",
   "secrets": {
     "DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE": {
       "description": "GitHub personal access token with `write:packages` scope to pull and push devcontainer image cache",
