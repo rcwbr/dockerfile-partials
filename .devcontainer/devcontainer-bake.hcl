@@ -1,7 +1,10 @@
 variable "devcontainer_layers" {
   default = [
     "docker-client",
-    "useradd"
+    "useradd",
+    "pre-commit-base",
+    "pre-commit-tool-image",
+    "pre-commit"
   ]
 }
 

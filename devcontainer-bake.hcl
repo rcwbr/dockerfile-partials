@@ -16,8 +16,8 @@ target "layer" {
   name = "${layer.name}"
   matrix = {
     layer = [
-      for index, input_layer in devcontainer_layers: {
-        name = input_layer,
+      for index, input_layer in devcontainer_layers : {
+        name  = input_layer,
         index = index
       }
     ]
@@ -35,11 +35,11 @@ target "layer" {
 
   // Apply cache args from the devcontainer context
   cache-from = [
-    for cache_from in split(" ", trimspace("${DEVCONTAINER_CACHE_FROMS}")):
+    for cache_from in split(" ", trimspace("${DEVCONTAINER_CACHE_FROMS}")) :
     "${cache_from}-${layer.name}"
   ]
   cache-to = [
-    for cache_to in split(" ", trimspace("${DEVCONTAINER_CACHE_TOS}")):
+    for cache_to in split(" ", trimspace("${DEVCONTAINER_CACHE_TOS}")) :
     "${cache_to}-${layer.name}"
   ]
 
@@ -52,6 +52,5 @@ target "layer" {
 }
 
 group "default" {
-  // Target the last layer as default
-  targets = [devcontainer_layers[length(devcontainer_layers) - 1]]
+  targets = devcontainer_layers
 }

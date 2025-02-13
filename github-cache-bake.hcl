@@ -44,7 +44,7 @@ variable "IMAGE_REF" {
 
 target "default" {
   dockerfile = "cwd://Dockerfile"
-  context = BAKE_CMD_CONTEXT
+  context    = BAKE_CMD_CONTEXT
   cache-from = [
     // Always pull cache from main
     "type=registry,ref=${IMAGE_REF}-cache:main",
@@ -57,7 +57,7 @@ target "default" {
     "type=docker,name=${IMAGE_NAME}",
     // If running for an unprotected ref (e.g. PRs), append the commit SHA
     (
-      ("${GITHUB_REF_PROTECTED}" == "true" || "${GITHUB_REF_TYPE}" == "tag" )
+      ("${GITHUB_REF_PROTECTED}" == "true" || "${GITHUB_REF_TYPE}" == "tag")
       ? "type=registry,name=${IMAGE_REF}:${VERSION}"
       : "type=registry,name=${IMAGE_REF}:${VERSION}-${GITHUB_SHA}"
     )
