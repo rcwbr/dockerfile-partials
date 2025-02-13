@@ -1,20 +1,24 @@
 {
-  "name": "dockerfile-partials",
-  "initializeCommand": ".devcontainer/initialize",
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
   "image": "dockerfile-partials-devcontainer",
+  "initializeCommand": ".devcontainer/initialize",
   "mounts": [
-    { "source": "/var/run/docker.sock", "target": "/var/run/docker.sock", "type": "bind" }
+    {
+      "source": "/var/run/docker.sock",
+      "target": "/var/run/docker.sock",
+      "type": "bind"
+    }
   ],
+  "name": "dockerfile-partials",
   "onCreateCommand": "/opt/devcontainers/on_create_command",
   "secrets": {
     "DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE": {
       "description": "GitHub personal access token with `write:packages` scope to pull and push devcontainer image cache",
       "documentationUrl": "https://github.com/rcwbr/devcontainer-cache-build/blob/main/README.md#initialize-script-github-container-registry-setup"
     }
-  },
-  "hostRequirements": {
-    "cpus": 2,
-    "memory": "8gb",
-    "storage": "32gb"
   }
 }
