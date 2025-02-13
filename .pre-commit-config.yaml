@@ -1,0 +1,12 @@
+repos:
+- repo: https://github.com/executablebooks/mdformat
+  rev: 0.7.17
+  hooks:
+  - id: mdformat
+    additional_dependencies:
+    - mdformat-black
+    - mdformat-config
+    - mdformat-gfm-alerts
+    - mdformat-shfmt
+    - mdformat-tables
+    - mdformat-toc
