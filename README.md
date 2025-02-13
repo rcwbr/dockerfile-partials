@@ -168,7 +168,20 @@ The docker-client partial installs only the client CLI by default. To leverage t
 
 ### pre-commit
 
-The pre-commit Dockerfile defines steps to install [pre-commit](https://pre-commit.com/) and install the hooks required by a repo configuration.
+The pre-commit layer defines steps to install [pre-commit](https://pre-commit.com/) and install the
+hooks required by a repo configuration.
+
+This layer produces an accompanying tool image that contains pre-commit executions, while the main
+image presents that tool image as the pre-commit executable:
+
+```mermaid
+graph TD;
+
+pl[_prior layers..._] --> tool[pre-commit-tool-image]
+pl --> pre-commit[pre-commit]
+tool -.-> pre-commit
+pre-commit --> nl[_next layers..._]
+```
 
 #### pre-commit Dockerfile usage
 
@@ -204,9 +217,25 @@ The args accepted by the Dockerfile include:
 
 The pre-commit partial contains a devcontainer bake config file. See [Devcontainer bake files](#devcontainer-bake-files) for general usage. The pre-commit bake config file accepts the following inputs:
 
-| Variable | Required | Default | Effect |
-| --- | --- | --- | --- |
-| `USER` | &cross; | `"root"` | See [pre-commit Dockerfile](#pre-commit-dockerfile-usage) |
+
+The
+[`devcontainer-bake.hcl` config `devcontainer_layers` variable](#devcontainer-bake-files-devcontainer-cache-build-devcontainerdevcontainer-bakehcl-config)
+must list each of the pre-commit targets; `pre-commit-base`, `pre-commit-tool-image`, and
+`pre-commit`.
+
+For example:
+
+```hcl
+variable "devcontainer_layers" {
+  default = [
+    "docker-client",
+    "useradd",
+    "pre-commit-base",
+    "pre-commit-tool-image",
+    "pre-commit"
+  ]
+}
+```
 
 #### pre-commit Codespaces usage
 
