@@ -24,6 +24,7 @@ jobs:
       - name: pre-commit
         env:
           HOME: /root
+          DEVCONTAINER_HOST_WORKSPACE_MOUNT: ${{ github.workspace }}
         run: |
           cd ${{ github.workspace }}
           git config --global --add safe.directory ${{ github.workspace }}

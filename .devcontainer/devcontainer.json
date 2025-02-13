@@ -1,4 +1,7 @@
 {
+  "containerEnv": {
+    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials"
+  },
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",

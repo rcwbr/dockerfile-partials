@@ -11,10 +11,10 @@ docker run \
   --user root \
   --entrypoint bash \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v "$(pwd):$(pwd)" \
-  -w "$(pwd)" \
+  -v "$DEVCONTAINER_HOST_WORKSPACE_MOUNT:$DEVCONTAINER_HOST_WORKSPACE_MOUNT" \
+  -w "$DEVCONTAINER_HOST_WORKSPACE_MOUNT" \
   -e DEVCONTAINER_PRE_COMMIT \
   "$DEVCONTAINER_PRE_COMMIT_IMAGE" \
-  -c "git config --global --add safe.directory $(pwd) && pre-commit ${PRE_COMMIT_ARGS[*]}"
+  -c "git config --global --add safe.directory $DEVCONTAINER_HOST_WORKSPACE_MOUNT && pre-commit ${PRE_COMMIT_ARGS[*]}"
 
 sudo chown -R "$USER:$USER" "$(pwd)"
