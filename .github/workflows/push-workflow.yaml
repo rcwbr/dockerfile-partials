@@ -15,6 +15,7 @@ jobs:
     secrets:
       app-secret: ${{ secrets.RELEASE_IT_GITHUB_APP_KEY }} # Secret belonging to the Repo release environment
   pre-commit:
+    if: github.event_name == pull_request
     uses: ./.github/workflows/pre-commit.yaml
     needs: devcontainer-cache-build
     with:
