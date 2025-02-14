@@ -1,0 +1,15 @@
+cd home/codespace/
+mkdir temp
+cd temp/
+git init
+git status
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"
+touch .pre-commit-config.yaml
+
+git add .
+source /opt/devcontainers/pre-commit/node_env/bin/activate
+pre-commit install
+pre-commit install-hooks
+
+git commit -m "test"

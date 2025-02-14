@@ -22,7 +22,7 @@ RUN DEBIAN_FRONTEND=noninteractive \
 ENV DEVCONTAINER_PRE_COMMIT=/opt/devcontainers/pre-commit
 # Apply wrapper executable
 # hadolint ignore=SC2016
-RUN echo 'PATH="$DEVCONTAINER_PRE_COMMIT/venv/bin:$PATH" "$DEVCONTAINER_PRE_COMMIT/venv/bin/pre-commit" "$@"' > /usr/local/bin/pre-commit && chmod a+x /usr/local/bin/pre-commit
+RUN echo 'PATH="$DEVCONTAINER_PRE_COMMIT/venv/bin:$DEVCONTAINER_PRE_COMMIT/node_venv/bin:$PATH" "$DEVCONTAINER_PRE_COMMIT/venv/bin/pre-commit" "$@"' > /usr/local/bin/pre-commit && chmod a+x /usr/local/bin/pre-commit
 # Create a temp repo and install the hooks from the config
 # Load the config file from the downstream context
 # hadolint ignore=DL3003,SC1091
@@ -31,10 +31,17 @@ RUN \
   mkdir -p "$DEVCONTAINER_PRE_COMMIT" \
   && python -m venv "$DEVCONTAINER_PRE_COMMIT/venv" \
   && source "$DEVCONTAINER_PRE_COMMIT/venv/bin/activate" \
+  && pip install nodeenv==1.9.1 \
+  && nodeenv "$DEVCONTAINER_PRE_COMMIT/node_venv" \
+  && source "$DEVCONTAINER_PRE_COMMIT/node_venv/bin/activate" \
   && mkdir "$DEVCONTAINER_PRE_COMMIT/tmp_repo" \
   && cd "$DEVCONTAINER_PRE_COMMIT/tmp_repo" \
   && cp /tmp/.pre-commit-config.yaml . \
   && git init . \
+  && git add .pre-commit-config.yaml \
+  && git config --global user.email "you@example.com" \
+  && git config --global user.name "Your Name" \
+  && git commit -m "chore: trigger commit to install hooks" \
   && pip install --no-cache-dir pre-commit==4.0.1 \
   && pre-commit install-hooks \
   && cd "$DEVCONTAINER_PRE_COMMIT" \
