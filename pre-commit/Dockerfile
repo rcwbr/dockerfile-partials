@@ -31,7 +31,7 @@ RUN \
   mkdir -p "$DEVCONTAINER_PRE_COMMIT" \
   && python -m venv "$DEVCONTAINER_PRE_COMMIT/venv" \
   && source "$DEVCONTAINER_PRE_COMMIT/venv/bin/activate" \
-  && pip install nodeenv==1.9.1 \
+  && pip install --no-cache-dir nodeenv==1.9.1 \
   && nodeenv "$DEVCONTAINER_PRE_COMMIT/node_venv" \
   && source "$DEVCONTAINER_PRE_COMMIT/node_venv/bin/activate" \
   && mkdir "$DEVCONTAINER_PRE_COMMIT/tmp_repo" \
