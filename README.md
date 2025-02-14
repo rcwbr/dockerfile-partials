@@ -141,7 +141,7 @@ initialize script:
 export DEVCONTAINER_DEFINITION_TYPE=bake
 export DEVCONTAINER_DEFINITION_FILES="devcontainer-bake.hcl [path to each desired partial bake file] cwd://.devcontainer/devcontainer-bake.hcl"
 export DEVCONTAINER_BUILD_ADDITIONAL_ARGS=https://github.com/rcwbr/dockerfile-partials.git#0.1.0
-curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.3.0/devcontainer-cache-build-initialize | bash
+curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.4.0/devcontainer-cache-build-initialize | bash
 ```
 
 `DEVCONTAINER_DEFINITION_FILES` must begin with `devcontainer-bake.hcl` and end with
