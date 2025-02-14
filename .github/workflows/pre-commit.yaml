@@ -21,11 +21,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: 0
       - name: pre-commit
         env:
           HOME: /root
           DEVCONTAINER_HOST_WORKSPACE_MOUNT: ${{ github.workspace }}
+          PRE_COMMIT_FROM_COMMIT: ${{ github.event.pull_request.base.sha }}
+          PRE_COMMIT_TO_COMMIT: ${{ github.event.pull_request.head.sha }}
         run: |
           cd ${{ github.workspace }}
           git config --global --add safe.directory ${{ github.workspace }}
           pre-commit run --show-diff-on-failure --color=always --all-files
+          pre-commit run --show-diff-on-failure --color=always --hook-stage manual
