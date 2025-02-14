@@ -65,6 +65,7 @@ repos:
   - id: commitlint-ci
     name: commitlint-ci
     stages: [manual]
+    always_run: true
     language: node
     additional_dependencies: ['@commitlint/config-conventional']
     entry: bash
