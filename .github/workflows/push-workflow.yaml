@@ -11,7 +11,8 @@ jobs:
     permissions:
       packages: write
   release-it-workflow:
-    uses: rcwbr/release-it-gh-workflow/.github/workflows/release-it-workflow.yaml@0.2.3
+    uses: rcwbr/release-it-gh-workflow/.github/workflows/release-it-workflow.yaml@20-detached-head-in-pull_request-workflows # TODO revert
+    # uses: rcwbr/release-it-gh-workflow/.github/workflows/release-it-workflow.yaml@0.2.4
     with:
       app-id: 1050683 # dockerfile-partials release-it app
       app-environment: Repo release
