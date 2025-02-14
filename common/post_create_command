@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for post_create_command_file in /opt/devcontainers/post_create_commands/*; do
+  # shellcheck disable=SC1090
+  source "$post_create_command_file"
+done

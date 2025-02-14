@@ -37,6 +37,9 @@ rulesets:
       - actor_id: 5 # Based on https://registry.terraform.io/providers/integrations/github/latest/docs/resources/organization_ruleset#bypass_actors
         actor_type: RepositoryRole
         bypass_mode: pull_request
+      - actor_id: 1050683 # dockerfile-partials release-it app
+        actor_type: Integration
+        bypass_mode: always
     rules:
       - type: creation
       - type: deletion
@@ -53,6 +56,8 @@ rulesets:
       - type: required_status_checks
         parameters:
           required_status_checks:
+            - context: devcontainer-cache-build / Populate devcontainer image cache
+              integration_id: 15368 # GitHub Actions integration ID
             - context: release-it-workflow / Release-it dry-run
               integration_id: 15368 # GitHub Actions integration ID
           # Requires PR branches to be up-to-date with target

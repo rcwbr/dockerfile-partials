@@ -16,8 +16,8 @@ target "useradd" {
   dockerfile = "useradd/Dockerfile"
   args = {
     EXTRA_GID_ARGS = "${EXTRA_GID_ARGS}"
-    USER = "${USER}"
-    USER_UID = "${UID}"
-    USER_GID = "${GID}"
+    USER           = "${USER}"
+    USER_UID       = "${UID}"
+    USER_GID       = "${GID}"
   }
 }

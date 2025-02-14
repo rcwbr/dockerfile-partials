@@ -1,6 +1,7 @@
 #!/bin/bash
 
-echo $DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE | docker login ghcr.io --username $GITHUB_USER --password-stdin
+set -ex
+
 export DEVCONTAINER_IMAGE=dockerfile-partials-devcontainer
 export DEVCONTAINER_REGISTRY=ghcr.io/rcwbr
 export DEVCONTAINER_DEFINITION_TYPE=bake
@@ -9,10 +10,10 @@ devcontainer_definition_files_arr=(
   devcontainer-bake.hcl
   docker-client/devcontainer-bake.hcl
   useradd/devcontainer-bake.hcl
+  pre-commit/devcontainer-bake.hcl
   .devcontainer/devcontainer-bake.hcl
 )
-DEVCONTAINER_DEFINITION_FILES="${devcontainer_definition_files_arr[@]}"
+DEVCONTAINER_DEFINITION_FILES="${devcontainer_definition_files_arr[*]}"
 export DEVCONTAINER_DEFINITION_FILES
-
-echo "PWD: $(pwd)"
-curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/1-define-initialize-script-with-caching-logic/initialize | bash -x
+export DEVCONTAINER_BUILD_ADDITIONAL_ARGS="$*"
+curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.6.0/devcontainer-cache-build-initialize | bash
