@@ -315,9 +315,13 @@ The pre-commit partial contains a devcontainer bake config file. See
 [Devcontainer bake files](#devcontainer-bake-files) for general usage. The pre-commit bake config
 file accepts the following inputs:
 
-| Variable | Required | Default  | Effect                                                    |
-| -------- | -------- | -------- | --------------------------------------------------------- |
-| `USER`   | ✗        | `"root"` | See [pre-commit Dockerfile](#pre-commit-dockerfile-usage) |
+| Variable                     | Required | Default                                                                               | Effect                                                                                     |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `USER`                       | ✗        | `"root"`                                                                              | See [pre-commit Dockerfile](#pre-commit-dockerfile-usage)                                  |
+| `DEVCONTAINER_REGISTRY`      | ✓        | `""`                                                                                  | The registry to which the pre-commit-tool-image belongs                                    |
+| `DEVCONTAINER_IMAGE`         | ✓        | `""`                                                                                  | The base devcontainer image name to which naming for the pre-commit image will be appended |
+| `GIT_BRANCH_SANITIZED`       | ✓        | `""`                                                                                  | The context Git branch name, sanitized for use as a Docker image tag                       |
+| `PRE_COMMIT_TOOL_IMAGE_NAME` | ✗        | `"${DEVCONTAINER_REGISTRY}/${DEVCONTAINER_IMAGE}-pre-commit:${GIT_BRANCH_SANITIZED}"` | The name of the pre-commit-tool-image                                                      |
 
 The
 [`devcontainer-bake.hcl` config `devcontainer_layers` variable](#devcontainer-bake-files-devcontainer-cache-build-devcontainerdevcontainer-bakehcl-config)
