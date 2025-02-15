@@ -28,10 +28,14 @@ for re-use across multiple applications.
       - [useradd Dockerfile usage](#useradd-dockerfile-usage)
       - [useradd bake file usage](#useradd-bake-file-usage)
       - [useradd Codespaces usage](#useradd-codespaces-usage)
+  - [pre-commit reusable workflow](#pre-commit-reusable-workflow)
+    - [pre-commit reusable workflow usage](#pre-commit-reusable-workflow-usage)
+    - [pre-commit reusable workflow inputs](#pre-commit-reusable-workflow-inputs)
   - [Contributing](#contributing)
     - [devcontainer](#devcontainer)
       - [devcontainer basic usage](#devcontainer-basic-usage)
       - [devcontainer Codespaces usage](#devcontainer-codespaces-usage)
+      - [devcontainer pre-commit usage](#devcontainer-pre-commit-usage)
     - [CI/CD](#cicd)
     - [Settings](#settings)
 
@@ -79,7 +83,7 @@ To build your image using the GitHub cache bake file via
 [remote bake definition](https://docs.docker.com/build/bake/remote-definition/), run this command:
 
 ```bash
-REGISTRY=ghcr.io/[your account] IMAGE_NAME=[image name] docker buildx bake --file github-cache-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.1.0
+REGISTRY=ghcr.io/[your account] IMAGE_NAME=[image name] docker buildx bake --file github-cache-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.4.0
 ```
 
 ### GitHub cache bake file inputs<a name="github-cache-bake-file-inputs"></a>
@@ -140,7 +144,7 @@ initialize script:
 # .devcontainer/initialize
 export DEVCONTAINER_DEFINITION_TYPE=bake
 export DEVCONTAINER_DEFINITION_FILES="devcontainer-bake.hcl [path to each desired partial bake file] cwd://.devcontainer/devcontainer-bake.hcl"
-export DEVCONTAINER_BUILD_ADDITIONAL_ARGS=https://github.com/rcwbr/dockerfile-partials.git#0.1.0
+export DEVCONTAINER_BUILD_ADDITIONAL_ARGS=https://github.com/rcwbr/dockerfile-partials.git#0.4.0
 curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.4.0/devcontainer-cache-build-initialize | bash
 ```
 
@@ -184,7 +188,7 @@ defined in the partials `devcontainer-bake.hcl`.
 The partial bake files may be used manually through a command like this:
 
 ```bash
-docker buildx bake --file devcontainer-bake.hcl [--file arg for each desired partial bake file] --file cwd://.devcontainer/devcontainer-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.1.0
+docker buildx bake --file devcontainer-bake.hcl [--file arg for each desired partial bake file] --file cwd://.devcontainer/devcontainer-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.4.0
 ```
 
 ## Devcontainer script integration<a name="devcontainer-script-integration"></a>
@@ -211,7 +215,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.1.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.4.0"
   dockerfile = "docker-client/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -270,6 +274,10 @@ tool -.-> pre-commit
 pre-commit --> nl[_next layers..._]
 ```
 
+> :warning: Use of the pre-commit layer requires that the variable
+> `DEVCONTAINER_HOST_WORKSPACE_MOUNT` be provided and set to the path of the workspace on the _host_
+> filesystem. This informs the workspace mount for the pre-commit-tool-image container.
+
 #### pre-commit Dockerfile usage<a name="pre-commit-dockerfile-usage"></a>
 
 The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
@@ -287,7 +295,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.1.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.4.0"
   dockerfile = "pre-commit/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -311,9 +319,13 @@ The pre-commit partial contains a devcontainer bake config file. See
 [Devcontainer bake files](#devcontainer-bake-files) for general usage. The pre-commit bake config
 file accepts the following inputs:
 
-| Variable | Required | Default  | Effect                                                    |
-| -------- | -------- | -------- | --------------------------------------------------------- |
-| `USER`   | ✗        | `"root"` | See [pre-commit Dockerfile](#pre-commit-dockerfile-usage) |
+| Variable                     | Required | Default                                                                               | Effect                                                                                     |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `USER`                       | ✗        | `"root"`                                                                              | See [pre-commit Dockerfile](#pre-commit-dockerfile-usage)                                  |
+| `DEVCONTAINER_REGISTRY`      | ✓        | `""`                                                                                  | The registry to which the pre-commit-tool-image belongs                                    |
+| `DEVCONTAINER_IMAGE`         | ✓        | `""`                                                                                  | The base devcontainer image name to which naming for the pre-commit image will be appended |
+| `GIT_BRANCH_SANITIZED`       | ✓        | `""`                                                                                  | The context Git branch name, sanitized for use as a Docker image tag                       |
+| `PRE_COMMIT_TOOL_IMAGE_NAME` | ✗        | `"${DEVCONTAINER_REGISTRY}/${DEVCONTAINER_IMAGE}-pre-commit:${GIT_BRANCH_SANITIZED}"` | The name of the pre-commit-tool-image                                                      |
 
 The
 [`devcontainer-bake.hcl` config `devcontainer_layers` variable](#devcontainer-bake-files-devcontainer-cache-build-devcontainerdevcontainer-bakehcl-config)
@@ -359,6 +371,17 @@ If exposed as variables, the appropriate values for Codespaces use must be
 [set as secrets](https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces#adding-a-secret)
 so as to be available during Codespace provisioning.
 
+In a `devcontainer.json` for a Codespace, the `DEVCONTAINER_HOST_WORKSPACE_MOUNT` var should be set
+to `/var/lib/docker/codespacemount/workspace/[repo name]`, e.g.:
+
+```json
+{
+  "containerEnv": {
+    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials"
+  },
+}
+```
+
 ### useradd<a name="useradd"></a>
 
 The useradd Dockerfile defines steps to add a user to the image, with configurable user name, id,
@@ -379,7 +402,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.1.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.4.0"
   dockerfile = "useradd/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -450,6 +473,50 @@ If exposed as variables, the appropriate values for Codespaces use must be
 [set as secrets](https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces#adding-a-secret)
 so as to be available during Codespace provisioning.
 
+## pre-commit reusable workflow<a name="pre-commit-reusable-workflow"></a>
+
+The `.github/workflows/pre-commit.yaml` reusable workflow defines steps to execute pre-commit CI
+checks by leveraging the [pre-commit-tool-image layer](#pre-commit).
+
+### pre-commit reusable workflow usage<a name="pre-commit-reusable-workflow-usage"></a>
+
+Basic usage of the workflow consists of including it in a GitHub workflow:
+
+```yaml
+on:
+  pull_request:
+jobs:
+  pre-commit:
+    if: github.event_name == 'pull_request'
+    uses: rcwbr/dockerfile-partials/.github/workflows/pre-commit.yaml@0.4.0
+```
+
+> :information_source: Often, pre-commit configurations require the commit context of a pull request
+> as input. To apply the pre-commit workflow to other contexts, omit or modify the
+> `if: github.event_name == 'pull_request'` condition.
+
+If using the pre-commit workflow alongside a
+[devcontainer-cache-build workflow](https://github.com/rcwbr/devcontainer-cache-build/tree/main#github-actions-workflow),
+the pre-commit image generated by that workflow should be provided as input to the pre-commit
+workflow. For example:
+
+```yaml
+...
+jobs:
+  pre-commit:
+    if: github.event_name == 'pull_request'
+    uses: rcwbr/dockerfile-partials/.github/workflows/pre-commit.yaml@0.4.0
+    needs: devcontainer-cache-build
+    with:
+      pre-commit-image: ${{ fromJSON(needs.devcontainer-cache-build.outputs.devcontainer-cache-image-all_configs).target.pre-commit.args.DEVCONTAINER_PRE_COMMIT_IMAGE }}
+```
+
+### pre-commit reusable workflow inputs<a name="pre-commit-reusable-workflow-inputs"></a>
+
+| Variable           | Required | Default      | Effect                                                   |
+| ------------------ | -------- | ------------ | -------------------------------------------------------- |
+| `pre-commit-image` | ✗        | `pre-commit` | The image used for pre-commit execution in the workflow. |
+
 ## Contributing<a name="contributing"></a>
 
 ### devcontainer<a name="devcontainer"></a>
@@ -473,10 +540,22 @@ For use with Codespaces, the `DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE` token
 [instructions](https://github.com/rcwbr/devcontainer-cache-build/tree/main?tab=readme-ov-file#initialize-script-github-container-registry-setup)),
 as must values for `USER`, and `UID` (see [useradd Codespaces usage](#useradd-codespaces-usage)).
 
+#### devcontainer pre-commit usage<a name="devcontainer-pre-commit-usage"></a>
+
+By default, the devcontainer configures [pre-commit](https://pre-commit.com/) hooks in the
+repository to ensure commits pass basic testing. This includes enforcing
+[conventional commit messages](https://www.conventionalcommits.org/en/v1.0.0/) as the standard for
+this repository, via [commitlint](https://github.com/conventional-changelog/commitlint).
+
 ### CI/CD<a name="cicd"></a>
 
 This repo uses the [release-it-gh-workflow](https://github.com/rcwbr/release-it-gh-workflow), with
-the conventional-changelog image defined at any given ref, as its automation.
+the conventional-changelog image defined at any given ref, as its automation. It leverages the
+[devcontainer-cache-build workflow](https://github.com/rcwbr/devcontainer-cache-build/blob/main/.github/workflows/devcontainer-cache-build.yaml)
+to pre-generate devcontainer images, which are also used for the
+[pre-commit workflow](./.github/workflows/pre-commit.yaml). Finally, a
+[Dive Docker image efficiency analysis](https://github.com/wagoodman/dive) job first builds an image
+with all partials layers included, then analyses the storage efficiency of the resulting image.
 
 ### Settings<a name="settings"></a>
 
