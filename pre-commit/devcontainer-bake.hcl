@@ -13,9 +13,6 @@ variable "GIT_BRANCH_SANITIZED" {
 variable "PRE_COMMIT_TOOL_IMAGE_NAME" {
   default = "${DEVCONTAINER_REGISTRY}/${DEVCONTAINER_IMAGE}-pre-commit:${GIT_BRANCH_SANITIZED}"
 }
-variable "PRE_COMMIT_TOOL_IMAGE_OUTPUT" {
-  default = "type=registry,name=${PRE_COMMIT_TOOL_IMAGE_NAME}"
-}
 
 target "pre-commit-base" {
   dockerfile-inline = "FROM base_context"
@@ -27,7 +24,7 @@ target "pre-commit-tool-image" {
     local_context = BAKE_CMD_CONTEXT
     base_context  = "target:pre-commit-base"
   }
-  output = ["${PRE_COMMIT_TOOL_IMAGE_OUTPUT}"]
+  output = ["type=registry,name=${PRE_COMMIT_TOOL_IMAGE_NAME}"]
 }
 
 target "pre-commit" {
