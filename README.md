@@ -35,6 +35,7 @@ for re-use across multiple applications.
     - [devcontainer](#devcontainer)
       - [devcontainer basic usage](#devcontainer-basic-usage)
       - [devcontainer Codespaces usage](#devcontainer-codespaces-usage)
+      - [devcontainer pre-commit usage](#devcontainer-pre-commit-usage)
     - [CI/CD](#cicd)
     - [Settings](#settings)
 
@@ -539,10 +540,22 @@ For use with Codespaces, the `DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE` token
 [instructions](https://github.com/rcwbr/devcontainer-cache-build/tree/main?tab=readme-ov-file#initialize-script-github-container-registry-setup)),
 as must values for `USER`, and `UID` (see [useradd Codespaces usage](#useradd-codespaces-usage)).
 
+#### devcontainer pre-commit usage<a name="devcontainer-pre-commit-usage"></a>
+
+By default, the devcontainer configures [pre-commit](https://pre-commit.com/) hooks in the
+repository to ensure commits pass basic testing. This includes enforcing
+[conventional commit messages](https://www.conventionalcommits.org/en/v1.0.0/) as the standard for
+this repository, via [commitlint](https://github.com/conventional-changelog/commitlint).
+
 ### CI/CD<a name="cicd"></a>
 
 This repo uses the [release-it-gh-workflow](https://github.com/rcwbr/release-it-gh-workflow), with
-the conventional-changelog image defined at any given ref, as its automation.
+the conventional-changelog image defined at any given ref, as its automation. It leverages the
+[devcontainer-cache-build workflow](https://github.com/rcwbr/devcontainer-cache-build/blob/main/.github/workflows/devcontainer-cache-build.yaml)
+to pre-generate devcontainer images, which are also used for the
+[pre-commit workflow](./.github/workflows/pre-commit.yaml). Finally, a
+[Dive Docker image efficiency analysis](https://github.com/wagoodman/dive) job first builds an image
+with all partials layers included, then analyses the storage efficiency of the resulting image.
 
 ### Settings<a name="settings"></a>
 
