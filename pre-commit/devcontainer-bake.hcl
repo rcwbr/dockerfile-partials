@@ -30,9 +30,8 @@ target "pre-commit-tool-image" {
 target "pre-commit" {
   dockerfile = "pre-commit/caller.Dockerfile"
   contexts = {
-    local_context  = BAKE_CMD_CONTEXT
-    common_context = "common"
-    base_context   = "target:pre-commit-base"
+    local_context = BAKE_CMD_CONTEXT
+    base_context  = "target:pre-commit-base"
     // Tool context is unused; referenced only to establish it as a dep
     tool_context = "target:pre-commit-tool-image"
   }

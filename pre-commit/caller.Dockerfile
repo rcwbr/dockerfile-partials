@@ -1,7 +1,4 @@
 # hadolint ignore=DL3006
-FROM common_context AS common_context
-
-# hadolint ignore=DL3006
 FROM base_context
 ARG USER=root
 
@@ -35,5 +32,5 @@ ENV DEVCONTAINER_PRE_COMMIT_IMAGE=$DEVCONTAINER_PRE_COMMIT_IMAGE
 COPY pre-commit/pre-commit /usr/local/bin
 
 # Include pre-commit initialization in config for devcontainers onCreateCommand, postCreateCommand
-COPY --from=common_context on_create_command /opt/devcontainers/on_create_command
+COPY common/on_create_command /opt/devcontainers/on_create_command
 COPY pre-commit/on_create_command /opt/devcontainers/on_create_command
