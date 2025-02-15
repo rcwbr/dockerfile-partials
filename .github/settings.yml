@@ -1,4 +1,8 @@
 repository:
+  name: dockerfile-partials
+  description: Dockerfile partials for re-use across multiple applications
+  default_branch: main
+
   # Prevent strategies other than basic merge, as they interfere with conventional changelog version inference
   allow_squash_merge: false
   allow_rebase_merge: false
@@ -56,7 +60,11 @@ rulesets:
       - type: required_status_checks
         parameters:
           required_status_checks:
+            - context: Dive Docker image space efficiency analysis
+              integration_id: 15368 # GitHub Actions integration ID
             - context: devcontainer-cache-build / Populate devcontainer image cache
+              integration_id: 15368 # GitHub Actions integration ID
+            - context: pre-commit / pre-commit
               integration_id: 15368 # GitHub Actions integration ID
             - context: release-it-workflow / Release-it dry-run
               integration_id: 15368 # GitHub Actions integration ID
