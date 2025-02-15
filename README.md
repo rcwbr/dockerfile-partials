@@ -270,6 +270,10 @@ tool -.-> pre-commit
 pre-commit --> nl[_next layers..._]
 ```
 
+> :warning: Use of the pre-commit layer requires that the variable
+> `DEVCONTAINER_HOST_WORKSPACE_MOUNT` be provided and set to the path of the workspace on the _host_
+> filesystem. This informs the workspace mount for the pre-commit-tool-image container.
+
 #### pre-commit Dockerfile usage<a name="pre-commit-dockerfile-usage"></a>
 
 The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
@@ -358,6 +362,17 @@ variable "USER" {
 If exposed as variables, the appropriate values for Codespaces use must be
 [set as secrets](https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces#adding-a-secret)
 so as to be available during Codespace provisioning.
+
+In a `devcontainer.json` for a Codespace, the `DEVCONTAINER_HOST_WORKSPACE_MOUNT` var should be set
+to `/var/lib/docker/codespacemount/workspace/[repo name]`, e.g.:
+
+```json
+{
+  "containerEnv": {
+    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials"
+  },
+}
+```
 
 ### useradd<a name="useradd"></a>
 
