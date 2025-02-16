@@ -24,7 +24,10 @@ target "pre-commit-tool-image" {
     local_context = BAKE_CMD_CONTEXT
     base_context  = "target:pre-commit-base"
   }
-  output = ["type=registry,name=${PRE_COMMIT_TOOL_IMAGE_NAME}"]
+  output = [
+    "type=registry,name=${PRE_COMMIT_TOOL_IMAGE_NAME}",
+    "type=docker,name=${PRE_COMMIT_TOOL_IMAGE_NAME}"
+  ]
 }
 
 target "pre-commit" {
