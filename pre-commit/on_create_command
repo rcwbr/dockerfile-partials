@@ -2,4 +2,5 @@
 
 set -ex
 
+docker pull "$DEVCONTAINER_PRE_COMMIT_IMAGE"
 pre-commit install
