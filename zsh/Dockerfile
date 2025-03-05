@@ -5,8 +5,14 @@ FROM base_context AS base
 # hadolint ignore=SC2034
 RUN DEBIAN_FRONTEND=noninteractive \
   && apt-get update \
-  && apt-get install --allow-unauthenticated --no-install-recommends -y \
-    zsh=5* \
+  && if ! dpkg-query --status zsh ; then \
+    apt-get install --allow-unauthenticated --no-install-recommends -y \
+      zsh=5* ; \
+  fi \
+  && if ! dpkg-query --status autojump ; then \
+    apt-get install --allow-unauthenticated --no-install-recommends -y \
+      autojump=22.5.1* ; \
+  fi \
   && apt-get clean \
   && apt-get autoclean \
   && apt-get autoremove \
