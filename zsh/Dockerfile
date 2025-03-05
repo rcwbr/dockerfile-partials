@@ -13,6 +13,10 @@ RUN DEBIAN_FRONTEND=noninteractive \
     apt-get install --allow-unauthenticated --no-install-recommends -y \
       autojump=22.5.1* ; \
   fi \
+  && if ! dpkg-query --status fzf ; then \
+    apt-get install --allow-unauthenticated --no-install-recommends -y \
+      fzf=0.38.0* ; \
+  fi \
   && apt-get clean \
   && apt-get autoclean \
   && apt-get autoremove \
