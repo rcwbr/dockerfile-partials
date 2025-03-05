@@ -31,6 +31,6 @@ ENV DEVCONTAINER_PRE_COMMIT_IMAGE=$DEVCONTAINER_PRE_COMMIT_IMAGE
 # Configure pre-commit caller executable
 COPY pre-commit/pre-commit /usr/local/bin
 
-# Include pre-commit initialization in config for devcontainers onCreateCommand, postCreateCommand
+# Include pre-commit initialization in config for devcontainers onCreateCommand
 COPY common/on_create_command /opt/devcontainers/on_create_command
-COPY pre-commit/on_create_command /opt/devcontainers/on_create_command
+COPY pre-commit/on_create_command /opt/devcontainers/on_create_commands/pre-commit

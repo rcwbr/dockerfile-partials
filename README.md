@@ -28,6 +28,9 @@ for re-use across multiple applications.
       - [useradd Dockerfile usage](#useradd-dockerfile-usage)
       - [useradd bake file usage](#useradd-bake-file-usage)
       - [useradd Codespaces usage](#useradd-codespaces-usage)
+    - [Zsh](#zsh)
+      - [Zsh Dockerfile usage](#zsh-dockerfile-usage)
+      - [Zsh bake file usage](#zsh-bake-file-usage)
   - [pre-commit reusable workflow](#pre-commit-reusable-workflow)
     - [pre-commit reusable workflow usage](#pre-commit-reusable-workflow-usage)
     - [pre-commit reusable workflow inputs](#pre-commit-reusable-workflow-inputs)
@@ -131,7 +134,7 @@ several fields must be configured to fully integrate. These include:
 
 1. The `initializeCommand` (see
    [Devcontainer bake files devcontainer-cache-build initializeCommand config](#devcontainer-bake-files-devcontainer-cache-build-initializecommand-config))
-1. For some images, such as [pre-commit](#pre-commit), map `onCreateCommand` to
+1. For some images, such as [pre-commit](#pre-commit) and [Zsh](#zsh), map `onCreateCommand` to
    `"/opt/devcontainers/on_create_command"`
 1. For some images, map `postCreateCommand` to `"/opt/devcontainers/post_create_command"`
 
@@ -472,6 +475,39 @@ variable "GID" {
 If exposed as variables, the appropriate values for Codespaces use must be
 [set as secrets](https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces#adding-a-secret)
 so as to be available during Codespace provisioning.
+
+### Zsh<a name="zsh"></a>
+
+The Zsh Dockerfile defines steps to install [Zsh](https://zsh.org/) and
+[Oh My Zsh](https://ohmyz.sh/) to the image.
+
+#### Zsh Dockerfile usage<a name="zsh-dockerfile-usage"></a>
+
+The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
+possible to use the Dockerfile partial directly.
+
+Use a [Bake](https://docs.docker.com/reference/cli/docker/buildx/bake/) config file, and set the
+`base_context` context as the image to which to apply the Zsh installation. For example:
+
+```hcl
+target "base" {
+  dockerfile = "Dockerfile"
+}
+
+target "default" {
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.5.0"
+  dockerfile = "zsh/Dockerfile"
+  contexts = {
+    base_context = "target:base"
+  }
+}
+```
+
+#### Zsh bake file usage<a name="zsh-bake-file-usage"></a>
+
+The Zsh partial contains a devcontainer bake config file. See
+[Devcontainer bake files](#devcontainer-bake-files) for general usage. The Zsh bake config file
+accepts no inputs.
 
 ## pre-commit reusable workflow<a name="pre-commit-reusable-workflow"></a>
 
