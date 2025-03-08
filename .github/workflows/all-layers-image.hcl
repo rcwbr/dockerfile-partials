@@ -3,6 +3,9 @@
 variable "devcontainer_layers" {
   default = [
     "docker-client",
+    "pyenv",
+    "zsh-base",
+    "zsh-thefuck-pyenv",
     "zsh",
     "useradd",
     "pre-commit-base",
