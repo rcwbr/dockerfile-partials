@@ -521,8 +521,8 @@ so as to be available during Codespace provisioning.
 
 ### Zsh<a name="zsh"></a>
 
-The Zsh Dockerfile defines steps to install [Zsh](https://zsh.org/) and
-[Oh My Zsh](https://ohmyz.sh/) to the image.
+The Zsh Dockerfile defines steps to install [Zsh](https://zsh.org/), [Oh My Zsh](https://ohmyz.sh/),
+[fzf](https://github.com/junegunn/fzf), and [thefuck](https://github.com/nvbn/thefuck) to the image.
 
 #### Zsh Dockerfile usage<a name="zsh-dockerfile-usage"></a>
 
@@ -537,11 +537,23 @@ target "base" {
   dockerfile = "Dockerfile"
 }
 
+target "zsh-thefuck-pyenv" {
+  dockerfile = "pyenv/Dockerfile"
+  contexts = {
+    base_context = "target:base"
+  }
+  args = {
+    PYTHON_VERSION = "3.8.20"
+    VIRTUALENV_NAME = "thefuck"
+  }
+}
+
 target "default" {
   context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
   dockerfile = "zsh/Dockerfile"
   contexts = {
     base_context = "target:base"
+    pyenv_context = "target:zsh-thefuck-pyenv"
   }
 }
 ```
@@ -551,6 +563,23 @@ target "default" {
 The Zsh partial contains a devcontainer bake config file. See
 [Devcontainer bake files](#devcontainer-bake-files) for general usage. The Zsh bake config file
 accepts no inputs.
+
+The
+[`devcontainer-bake.hcl` config `devcontainer_layers` variable](#devcontainer-bake-files-devcontainer-cache-build-devcontainerdevcontainer-bakehcl-config)
+must list each of the Zsh targets; `zsh-base`, `zsh-thefuck-pyenv`, and `zsh`.
+
+For example:
+
+```hcl
+variable "devcontainer_layers" {
+  default = [
+    "docker-client",
+    "zsh-base",
+    "zsh-thefuck-pyenv",
+    "zsh",
+  ]
+}
+```
 
 ## pre-commit reusable workflow<a name="pre-commit-reusable-workflow"></a>
 
