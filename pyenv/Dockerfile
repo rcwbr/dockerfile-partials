@@ -17,7 +17,9 @@ SHELL [ "/bin/bash", "-o", "pipefail", "-c" ]
   # Instructions: curl -fsSL https://pyenv.run | bash
   # Using locked ref for stability
 RUN \
-  curl -fsSL https://raw.githubusercontent.com/pyenv/pyenv-installer/86a08ac9e38ec3a267e4b5c758891caf1233a2e4/bin/pyenv-installer | bash \
+  if [[ ! -d "$PYENV_ROOT" ]]; then \
+    curl -fsSL https://raw.githubusercontent.com/pyenv/pyenv-installer/86a08ac9e38ec3a267e4b5c758891caf1233a2e4/bin/pyenv-installer | bash ; \
+  fi \
   && "$PYENV_ROOT/bin/pyenv" install "${PYTHON_VERSION}" && "$PYENV_ROOT/bin/pyenv" global "${PYTHON_VERSION}" \
   && pip install --no-cache-dir virtualenv==20.29.2 \
   && virtualenv \
