@@ -52,6 +52,7 @@ jobs:
           devcontainer_definition_files_arr=(
             devcontainer-bake.hcl
             docker-client/devcontainer-bake.hcl
+            pyenv/devcontainer-bake.hcl
             zsh/devcontainer-bake.hcl
             useradd/devcontainer-bake.hcl
             pre-commit/devcontainer-bake.hcl
