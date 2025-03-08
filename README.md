@@ -27,6 +27,9 @@ for re-use across multiple applications.
     - [pyenv](#pyenv)
       - [pyenv Dockerfile usage](#pyenv-dockerfile-usage)
       - [pyenv bake file usage](#pyenv-bake-file-usage)
+    - [tmux](#tmux)
+      - [tmux Dockerfile usage](#tmux-dockerfile-usage)
+      - [tmux bake file usage](#tmux-bake-file-usage)
     - [useradd](#useradd)
       - [useradd Dockerfile usage](#useradd-dockerfile-usage)
       - [useradd bake file usage](#useradd-bake-file-usage)
@@ -427,6 +430,38 @@ The args accepted by the Dockerfile include:
 
 The pyenv partial contains a devcontainer bake config file. See
 [Devcontainer bake files](#devcontainer-bake-files) for general usage.
+
+### tmux<a name="tmux"></a>
+
+The tmux Dockerfile defines steps to install [tmux](https://github.com/tmux/tmux) in a Docker image.
+
+#### tmux Dockerfile usage<a name="tmux-dockerfile-usage"></a>
+
+The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
+possible to use the Dockerfile partial directly.
+
+Use a [Bake](https://docs.docker.com/reference/cli/docker/buildx/bake/) config file, and set the
+`base_context` context as the image to which to apply the tmux installation. For example:
+
+```hcl
+target "base" {
+  dockerfile = "Dockerfile"
+}
+
+target "default" {
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.8.0"
+  dockerfile = "tmux/Dockerfile"
+  contexts = {
+    base_context = "target:base"
+  }
+}
+```
+
+#### tmux bake file usage<a name="tmux-bake-file-usage"></a>
+
+The tmux partial contains a devcontainer bake config file. See
+[Devcontainer bake files](#devcontainer-bake-files) for general usage. The tmux bake config file
+accepts accepts no inputs.
 
 ### useradd<a name="useradd"></a>
 
