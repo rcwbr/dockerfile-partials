@@ -24,6 +24,9 @@ for re-use across multiple applications.
       - [pre-commit Dockerfile usage](#pre-commit-dockerfile-usage)
       - [pre-commit bake file usage](#pre-commit-bake-file-usage)
       - [pre-commit Codespaces usage](#pre-commit-codespaces-usage)
+    - [pyenv](#pyenv)
+      - [pyenv Dockerfile usage](#pyenv-dockerfile-usage)
+      - [pyenv bake file usage](#pyenv-bake-file-usage)
     - [useradd](#useradd)
       - [useradd Dockerfile usage](#useradd-dockerfile-usage)
       - [useradd bake file usage](#useradd-bake-file-usage)
@@ -384,6 +387,46 @@ to `/var/lib/docker/codespacemount/workspace/[repo name]`, e.g.:
   },
 }
 ```
+
+### pyenv<a name="pyenv"></a>
+
+The pyenv layer defines steps to install [pyenv](https://github.com/pyenv/pyenv), leverage it to
+install a specified version of Python, and prepare a virtualenv based on that Python installation.
+
+#### pyenv Dockerfile usage<a name="pyenv-dockerfile-usage"></a>
+
+The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
+possible to use the Dockerfile partial directly.
+
+Use a [Bake](https://docs.docker.com/reference/cli/docker/buildx/bake/) config file, and set the
+`base_context` context as the image to which to apply the pyenv installation. For example:
+
+```hcl
+target "base" {
+  dockerfile = "Dockerfile"
+}
+
+target "default" {
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
+  dockerfile = "pyenv/Dockerfile"
+  contexts = {
+    base_context = "target:base"
+  }
+}
+```
+
+The args accepted by the Dockerfile include:
+
+| Variable          | Required | Default                    | Effect                               |
+| ----------------- | -------- | -------------------------- | ------------------------------------ |
+| `PYTHON_VERSION`  | ✗        | `3.12.4`                   | The version of Python to install     |
+| `VIRTUALENV_NAME` | ✗        | `venv`                     | The name of the virtualenv to create |
+| `PYENV_ROOT`      | ✗        | `/opt/devcontainers/pyenv` | The path in which to install Pyenv   |
+
+#### pyenv bake file usage<a name="pyenv-bake-file-usage"></a>
+
+The pyenv partial contains a devcontainer bake config file. See
+[Devcontainer bake files](#devcontainer-bake-files) for general usage.
 
 ### useradd<a name="useradd"></a>
 
