@@ -89,7 +89,7 @@ To build your image using the GitHub cache bake file via
 [remote bake definition](https://docs.docker.com/build/bake/remote-definition/), run this command:
 
 ```bash
-REGISTRY=ghcr.io/[your account] IMAGE_NAME=[image name] docker buildx bake --file github-cache-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.7.0
+REGISTRY=ghcr.io/[your account] IMAGE_NAME=[image name] docker buildx bake --file github-cache-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.8.0
 ```
 
 ### GitHub cache bake file inputs<a name="github-cache-bake-file-inputs"></a>
@@ -125,8 +125,8 @@ Using these bake files remotely requires setting the primary build context to th
 this means that any build contexts required by the Dockerfile partial must be provided via a
 [local directory `contexts` context](https://docs.docker.com/build/bake/reference/#targetcontexts)
 rather than the primary build context. For example, the `pre-commit` Dockerfile
-[reads from the `local_context` context](https://github.com/rcwbr/dockerfile-partials/blob/0.7.02fb92beb8ab2bf887ff6a6a141804762eb9/pre-commit/Dockerfile#L10C26-L10C39)
-[set to `BAKE_CMD_CONTEXT`](https://github.com/rcwbr/dockerfile-partials/blob/0.7.02fb92beb8ab2bf887ff6a6a141804762eb9/pre-commit/devcontainer-bake.hcl#L11).
+[reads from the `local_context` context](https://github.com/rcwbr/dockerfile-partials/blob/0.8.02fb92beb8ab2bf887ff6a6a141804762eb9/pre-commit/Dockerfile#L10C26-L10C39)
+[set to `BAKE_CMD_CONTEXT`](https://github.com/rcwbr/dockerfile-partials/blob/0.8.02fb92beb8ab2bf887ff6a6a141804762eb9/pre-commit/devcontainer-bake.hcl#L11).
 This allows it to consume contents of the downstream build context.
 
 ### Devcontainer bake files devcontainer-cache-build usage<a name="devcontainer-bake-files-devcontainer-cache-build-usage"></a>
@@ -150,8 +150,8 @@ initialize script:
 # .devcontainer/initialize
 export DEVCONTAINER_DEFINITION_TYPE=bake
 export DEVCONTAINER_DEFINITION_FILES="devcontainer-bake.hcl [path to each desired partial bake file] cwd://.devcontainer/devcontainer-bake.hcl"
-export DEVCONTAINER_BUILD_ADDITIONAL_ARGS=https://github.com/rcwbr/dockerfile-partials.git#0.7.0
-curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.7.0/devcontainer-cache-build-initialize | bash
+export DEVCONTAINER_BUILD_ADDITIONAL_ARGS=https://github.com/rcwbr/dockerfile-partials.git#0.8.0
+curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.8.0/devcontainer-cache-build-initialize | bash
 ```
 
 `DEVCONTAINER_DEFINITION_FILES` must begin with `devcontainer-bake.hcl` and end with
@@ -194,7 +194,7 @@ defined in the partials `devcontainer-bake.hcl`.
 The partial bake files may be used manually through a command like this:
 
 ```bash
-docker buildx bake --file devcontainer-bake.hcl [--file arg for each desired partial bake file] --file cwd://.devcontainer/devcontainer-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.7.0
+docker buildx bake --file devcontainer-bake.hcl [--file arg for each desired partial bake file] --file cwd://.devcontainer/devcontainer-bake.hcl https://github.com/rcwbr/dockerfile-partials.git#0.8.0
 ```
 
 ## Devcontainer script integration<a name="devcontainer-script-integration"></a>
@@ -221,7 +221,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.8.0"
   dockerfile = "docker-client/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -301,7 +301,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.8.0"
   dockerfile = "pre-commit/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -407,7 +407,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.8.0"
   dockerfile = "pyenv/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -448,7 +448,7 @@ target "base" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.8.0"
   dockerfile = "useradd/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -549,7 +549,7 @@ target "zsh-thefuck-pyenv" {
 }
 
 target "default" {
-  context = "https://github.com/rcwbr/dockerfile_partials.git#0.7.0"
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.8.0"
   dockerfile = "zsh/Dockerfile"
   contexts = {
     base_context = "target:base"
@@ -596,7 +596,7 @@ on:
 jobs:
   pre-commit:
     if: github.event_name == 'pull_request'
-    uses: rcwbr/dockerfile-partials/.github/workflows/pre-commit.yaml@0.7.0
+    uses: rcwbr/dockerfile-partials/.github/workflows/pre-commit.yaml@0.8.0
 ```
 
 > :information_source: Often, pre-commit configurations require the commit context of a pull request
@@ -613,7 +613,7 @@ workflow. For example:
 jobs:
   pre-commit:
     if: github.event_name == 'pull_request'
-    uses: rcwbr/dockerfile-partials/.github/workflows/pre-commit.yaml@0.7.0
+    uses: rcwbr/dockerfile-partials/.github/workflows/pre-commit.yaml@0.8.0
     needs: devcontainer-cache-build
     with:
       pre-commit-image: ${{ fromJSON(needs.devcontainer-cache-build.outputs.devcontainer-cache-image-all_configs).target.pre-commit.args.DEVCONTAINER_PRE_COMMIT_IMAGE }}
