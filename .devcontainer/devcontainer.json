@@ -2,6 +2,16 @@
   "containerEnv": {
     "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials"
   },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.hcl",
+        "ms-azuretools.vscode-docker",
+        "bierner.markdown-mermaid",
+        "joshbolduc.commitlint"
+      ]
+    }
+  },
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",
