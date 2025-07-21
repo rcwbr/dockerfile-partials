@@ -18,6 +18,7 @@ repos:
   rev: 0.7.17
   hooks:
   - id: mdformat
+    exclude: '.github/ISSUE_TEMPLATE/.*\.md$'
     additional_dependencies:
     - mdformat-black
     - mdformat-config
@@ -41,6 +42,7 @@ repos:
   - id: detect-private-key
   - id: double-quote-string-fixer
   - id: end-of-file-fixer
+    exclude: '.github/ISSUE_TEMPLATE/.*\.md$'
   - id: forbid-submodules
   - id: mixed-line-ending
   - id: pretty-format-json
