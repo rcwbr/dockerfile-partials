@@ -1,0 +1,15 @@
+[project]
+name = "dummy-pkg"
+version = "0.1.0"
+description = "A dummy Python package for uv testing."
+authors = [ { name = "Your Name", email = "your@email.com" } ]
+requires-python = ">=3.8"
+
+[build-system]
+requires = ["uv_build>=0.8.20,<0.9.0"]
+build-backend = "uv_build"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.5",
+]
