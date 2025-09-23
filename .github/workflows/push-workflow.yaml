@@ -55,6 +55,7 @@ jobs:
             pyenv/devcontainer-bake.hcl
             zsh/devcontainer-bake.hcl
             tmux/devcontainer-bake.hcl
+            uv-project/devcontainer-bake.hcl
             useradd/devcontainer-bake.hcl
             pre-commit/devcontainer-bake.hcl
             .github/workflows/all-layers-image.hcl

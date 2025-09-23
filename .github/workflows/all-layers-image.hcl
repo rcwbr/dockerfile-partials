@@ -8,6 +8,7 @@ variable "devcontainer_layers" {
     "zsh-thefuck-pyenv",
     "zsh",
     "tmux",
+    "uv-project",
     "useradd",
     "pre-commit-base",
     "pre-commit-tool-image",
@@ -18,6 +19,16 @@ variable "devcontainer_layers" {
 target "docker-client" {
   contexts = {
     base_context = "docker-image://python:3.12.4"
+  }
+}
+
+
+target "uv-project" {
+  contexts = {
+    local_context = "uv-project/dummy_pkg"
+  }
+  args = {
+    UV_PACKAGE_NAME = "dummy_pkg"
   }
 }
 

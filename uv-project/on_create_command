@@ -1,0 +1,11 @@
+
+set -e
+
+echo "Configuring editable installation of this package to point to the current workspace..."
+
+SITE_PACKAGES_DIR=$("${UV_PROJECT_ENVIRONMENT}/bin/python" -c "import site; print(site.getsitepackages()[0])")
+
+echo "Writing ${DEVCONTAINER_WORKSPACE_PATH}/src to $(ls ${SITE_PACKAGES_DIR}/__editable__.${UV_PACKAGE_NAME}-*.pth)"
+
+# Replace the image-specified package editable path with the devcontainer workspace path
+echo "${DEVCONTAINER_WORKSPACE_PATH}/src" | sudo tee "${SITE_PACKAGES_DIR}/__editable__.${UV_PACKAGE_NAME}-*.pth"

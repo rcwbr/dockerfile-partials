@@ -34,6 +34,10 @@ for re-use across multiple applications.
       - [useradd Dockerfile usage](#useradd-dockerfile-usage)
       - [useradd bake file usage](#useradd-bake-file-usage)
       - [useradd Codespaces usage](#useradd-codespaces-usage)
+    - [uv-project](#uv-project)
+      - [uv-project Dockerfile usage](#uv-project-dockerfile-usage)
+      - [uv-project devcontainer bake file usage](#uv-project-devcontainer-bake-file-usage)
+      - [uv-project bake file usage](#uv-project-bake-file-usage)
     - [Zsh](#zsh)
       - [Zsh Dockerfile usage](#zsh-dockerfile-usage)
       - [Zsh bake file usage](#zsh-bake-file-usage)
@@ -461,7 +465,7 @@ target "default" {
 
 The tmux partial contains a devcontainer bake config file. See
 [Devcontainer bake files](#devcontainer-bake-files) for general usage. The tmux bake config file
-accepts accepts no inputs.
+accepts no inputs.
 
 ### useradd<a name="useradd"></a>
 
@@ -553,6 +557,69 @@ variable "GID" {
 If exposed as variables, the appropriate values for Codespaces use must be
 [set as secrets](https://docs.github.com/en/codespaces/managing-your-codespaces/managing-your-account-specific-secrets-for-github-codespaces#adding-a-secret)
 so as to be available during Codespace provisioning.
+
+### uv-project<a name="uv-project"></a>
+
+The uv-project Dockerfile defines steps to prepare an environment to work with a Python project,
+using the [uv tool](https://github.com/astral-sh/uv).
+
+#### uv-project Dockerfile usage<a name="uv-project-dockerfile-usage"></a>
+
+The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
+possible to use the Dockerfile partial directly.
+
+Use a [Bake](https://docs.docker.com/reference/cli/docker/buildx/bake/) config file, and set the
+`base_context` context as the image to which to apply the uv-project installation, the
+`local_context` to the directory in which the Python project is defined, and the `UV_PACKAGE_NAME`
+build arg to the name of the package. For example:
+
+```hcl
+target "base" {
+  dockerfile = "Dockerfile"
+}
+
+target "default" {
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.11.0"
+  dockerfile = "uv-project/Dockerfile"
+  contexts = {
+    base_context = "target:base"
+    local_context = BAKE_CMD_CONTEXT
+  }
+  args = {
+    UV_PACKAGE_NAME = "<your package name>"
+  }
+}
+```
+
+#### uv-project devcontainer bake file usage<a name="uv-project-devcontainer-bake-file-usage"></a>
+
+The uv-project partial contains a devcontainer bake config file. See
+[Devcontainer bake files](#devcontainer-bake-files) for general usage. The uv-project bake config
+file accepts no inputs.
+
+#### uv-project bake file usage<a name="uv-project-bake-file-usage"></a>
+
+The uv-project partial contains a bake config file for providing. The uv-project bake config file
+accepts no inputs directly, but the `UV_PACKAGE_NAME` build arg should be specified (see
+[uv-project Dockerfile usage](#uv-project-dockerfile-usage)), similarly to this:
+
+```hcl
+// docker-bake.hcl
+target "uv-project" {
+  args = {
+    UV_PACKAGE_NAME = "<your package name>"
+  }
+}
+```
+
+Then the local bake config may be used alongside the partial by executing this command:
+
+```bash
+docker buildx bake \
+	-f uv-project/docker-bake.hcl \
+	-f cwd://docker-bake.hcl \
+	https://github.com/rcwbr/dockerfile_partials.git#0.11.0
+```
 
 ### Zsh<a name="zsh"></a>
 
