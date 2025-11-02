@@ -24,14 +24,23 @@ target "layer" {
   }
 
   // Apply the contexts from options and context
-  contexts = { // Establish default base_context from layer order
-    base_context = (
-      // A default base_context can be inferred only for the second layer and later
-      layer.index >= 1
-      ? "target:${element(devcontainer_layers, layer.index - 1)}"
-      : "no_base_context_provided"
-    )
-  }
+  contexts = merge(
+    {
+      // Establish default base_context from layer order
+      base_context = (
+        // A default base_context can be inferred only for the second layer and later
+        layer.index >= 1
+        ? "target:${element(devcontainer_layers, layer.index - 1)}"
+        : "no_base_context_provided"
+      )
+    },
+    {
+      // Directly depend on each previous layer as workaround for https://github.com/docker/buildx/issues/414
+      for dep_index, dep_layer in devcontainer_layers :
+      "dep_${dep_layer}" => "target:${dep_layer}"
+      if dep_index < layer.index
+    }
+  )
 
   // Apply cache args from the devcontainer context
   cache-from = [
