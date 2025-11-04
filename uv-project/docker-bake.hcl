@@ -1,4 +1,4 @@
-target "default" {
+target "uv-project" {
   dockerfile = "uv-project/Dockerfile"
   context    = "."
   contexts = {
