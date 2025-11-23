@@ -9,6 +9,6 @@ variable "DOCKER_CLIENT_EXTRA_GID_ARGS" {
 target "docker-client" {
   dockerfile = "docker-client/Dockerfile"
   contexts = {
-    docker_image = "docker-image://docker:27.3.1-cli"
+    docker_image = "docker-image://docker:29.0.2-cli"
   }
 }
