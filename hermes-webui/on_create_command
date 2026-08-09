@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+cd /opt/devcontainers/hermes_webui
+bootstrap.py

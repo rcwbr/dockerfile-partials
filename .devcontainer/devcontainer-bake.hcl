@@ -5,6 +5,7 @@ variable "devcontainer_layers" {
     "zsh-thefuck-pyenv",
     "zsh",
     "tmux",
+    "hermes-webui",
     "useradd",
     "pre-commit-base",
     "pre-commit-tool-image",
