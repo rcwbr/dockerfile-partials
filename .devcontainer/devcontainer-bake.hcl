@@ -6,10 +6,7 @@ variable "devcontainer_layers" {
     "zsh",
     "tmux",
     "hermes-webui",
-    "useradd",
-    "pre-commit-base",
-    "pre-commit-tool-image",
-    "pre-commit"
+    "useradd"
   ]
 }
 

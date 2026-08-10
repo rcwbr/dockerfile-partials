@@ -1,5 +1,5 @@
 variable "HERMES_WEBUI_VERSION" {
-  default = "0.52.106"
+  default = "v0.52.106"
 }
 
 variable "HERMES_WEBUI_SOURCE" {

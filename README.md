@@ -1,5 +1,7 @@
 # dockerfile-partials<a name="dockerfile-partials"></a>
 
+TODO OPENROUTER_API_KEY user Codespaces secret config. HERMES_WEBUI_DEFAULT_MODEL usage
+
 Dockerfile partials and devcontainer [bake](https://docs.docker.com/build/bake/introduction/) files
 for re-use across multiple applications.
 

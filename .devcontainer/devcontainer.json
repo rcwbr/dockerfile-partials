@@ -1,6 +1,8 @@
 {
   "containerEnv": {
-    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials"
+    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials",
+    "HERMES_WEBUI_ENV_FILE": "${containerWorkspaceFolder}/.hermes-webui.env",
+    "HERMES_WEBUI_DEFAULT_MODEL": "poolside/laguna-s-2.1:free"
   },
   "customizations": {
     "vscode": {

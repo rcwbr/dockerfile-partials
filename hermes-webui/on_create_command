@@ -2,5 +2,5 @@
 
 set -e
 
-cd /opt/devcontainers/hermes_webui
-bootstrap.py
+source "${HERMES_WEBUI_ENV_FILE}"
+/opt/devcontainers/hermes_webui/ctl.sh start

@@ -13,7 +13,6 @@ devcontainer_definition_files_arr=(
   tmux/devcontainer-bake.hcl
   hermes-webui/devcontainer-bake.hcl
   useradd/devcontainer-bake.hcl
-  pre-commit/devcontainer-bake.hcl
   .devcontainer/devcontainer-bake.hcl
 )
 DEVCONTAINER_DEFINITION_FILES="${devcontainer_definition_files_arr[*]}"
