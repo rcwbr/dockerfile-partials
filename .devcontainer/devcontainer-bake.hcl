@@ -1,6 +1,7 @@
 variable "devcontainer_layers" {
   default = [
     "docker-client",
+    "gh",
     "zsh-base",
     "zsh-thefuck-pyenv",
     "zsh",

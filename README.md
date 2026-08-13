@@ -20,6 +20,9 @@ for re-use across multiple applications.
       - [docker-client Dockerfile usage](#docker-client-dockerfile-usage)
       - [docker-client bake file usage](#docker-client-bake-file-usage)
       - [docker-client devcontainer usage](#docker-client-devcontainer-usage)
+    - [gh](#gh)
+      - [gh Dockerfile usage](#gh-dockerfile-usage)
+      - [gh bake file usage](#gh-bake-file-usage)
     - [pre-commit](#pre-commit)
       - [pre-commit Dockerfile usage](#pre-commit-dockerfile-usage)
       - [pre-commit bake file usage](#pre-commit-bake-file-usage)
@@ -269,6 +272,40 @@ must be included:
   ]
 }
 ```
+
+### gh<a name="gh"></a>
+
+The gh Dockerfile defines steps to install the [GitHub CLI](https://cli.github.com/) (`gh`) in a
+Docker image, using the
+[official GitHub APT repository](https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debianubuntu).
+
+#### gh Dockerfile usage<a name="gh-dockerfile-usage"></a>
+
+The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
+possible to use the Dockerfile partial directly.
+
+Use a [Bake](https://docs.docker.com/reference/cli/docker/buildx/bake/) config file, and set the
+`base_context` context as the image to which to apply the gh installation. For example:
+
+```hcl
+target "base" {
+  dockerfile = "Dockerfile"
+}
+
+target "default" {
+  context = "https://github.com/rcwbr/dockerfile_partials.git#0.13.0"
+  dockerfile = "gh/Dockerfile"
+  contexts = {
+    base_context = "target:base"
+  }
+}
+```
+
+#### gh bake file usage<a name="gh-bake-file-usage"></a>
+
+The gh partial contains a devcontainer bake config file. See
+[Devcontainer bake files](#devcontainer-bake-files) for general usage. The gh bake config file
+accepts no inputs.
 
 ### pre-commit<a name="pre-commit"></a>
 
