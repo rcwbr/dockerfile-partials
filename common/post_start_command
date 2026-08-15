@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for post_start_command in /opt/devcontainers/post_start_commands/*; do
+  # shellcheck disable=SC1090
+  source "$post_start_command"
+done

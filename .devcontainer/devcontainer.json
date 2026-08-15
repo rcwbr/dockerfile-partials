@@ -1,6 +1,8 @@
 {
   "containerEnv": {
-    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials"
+    "CONTAINER_WORKSPACE_FOLDER": "${containerWorkspaceFolder}",
+    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials",
+    "HERMES_WEBUI_ENV_FILE": "${containerWorkspaceFolder}/.hermes-webui.env"
   },
   "customizations": {
     "vscode": {
@@ -12,6 +14,9 @@
       ]
     }
   },
+  "forwardPorts": [
+    8787
+  ],
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",
@@ -27,7 +32,7 @@
     }
   ],
   "name": "dockerfile-partials",
-  "onCreateCommand": "/opt/devcontainers/on_create_command",
+  "postStartCommand": "/opt/devcontainers/post_start_command",
   "secrets": {
     "DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE": {
       "description": "GitHub personal access token with `write:packages` scope to pull and push devcontainer image cache",
