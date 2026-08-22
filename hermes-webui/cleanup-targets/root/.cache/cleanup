@@ -1,0 +1,7 @@
+# Cleanup for /root/.cache/
+# Remove pip, uv, and huggingface cache directories
+# Patterns without trailing slash to match the directory entry itself,
+# so shutil.rmtree removes the entire directory tree.
+/pip
+/uv
+/huggingface

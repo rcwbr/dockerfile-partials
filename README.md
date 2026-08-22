@@ -44,6 +44,10 @@ for re-use across multiple applications.
     - [Zsh](#zsh)
       - [Zsh Dockerfile usage](#zsh-dockerfile-usage)
       - [Zsh bake file usage](#zsh-bake-file-usage)
+    - [hermes-webui](#hermes-webui)
+      - [hermes-webui Dockerfile usage](#hermes-webui-dockerfile-usage)
+      - [hermes-webui bake file usage](#hermes-webui-bake-file-usage)
+      - [hermes-webui Codespaces usage](#hermes-webui-codespaces-usage)
   - [pre-commit reusable workflow](#pre-commit-reusable-workflow)
     - [pre-commit reusable workflow usage](#pre-commit-reusable-workflow-usage)
     - [pre-commit reusable workflow inputs](#pre-commit-reusable-workflow-inputs)
@@ -719,6 +723,191 @@ variable "devcontainer_layers" {
   ]
 }
 ```
+
+### hermes-webui<a name="hermes-webui"></a>
+
+The hermes-webui Dockerfile partial installs
+[Hermes WebUI](https://github.com/nesquena/hermes-webui) as a containerized devcontainer service,
+with automatic API key injection from Secrets and faster-whisper STT packages pre-installed into the
+agent venv.
+
+The partial handles the webui lifecycle and Codespaces port visibility via `postStartCommand`:
+
+- **On container start** (`postStartCommand`): sources the env file, starts the webui via
+  `ctl.sh start`, and uses `gh CLI` to make port 8787 publicly accessible on Codespaces
+
+#### hermes-webui Dockerfile usage<a name="hermes-webui-dockerfile-usage"></a>
+
+The recommended usage is via the [Devcontainer bake files](#devcontainer-bake-files). It is also
+possible to use the Dockerfile partial directly.
+
+Use a [Bake](https://docs.docker.com/reference/cli/docker/buildx/bake/) config file, and set the
+`base_context` context as the image to which to apply the hermes-webui installation. For example:
+
+```hcl
+target "base" {
+  dockerfile = "Dockerfile"
+}
+
+target "hermes-webui" {
+  context = "https://github.com/rcwbr/dockerfile-partials.git#0.14.0"
+  dockerfile = "hermes-webui/Dockerfile"
+  contexts = {
+    base_context      = "target:base"
+    hermes_webui      = "https://github.com/nesquena/hermes-webui.git#v0.52.106"
+  }
+}
+```
+
+The Dockerfile partial installs the following packages into the agent venv using `uv pip install`:
+
+| Package          | Version | Purpose                        |
+| ---------------- | ------- | ------------------------------ |
+| `faster-whisper` | `1.2.1` | Speech-to-text (STT) inference |
+| `sounddevice`    | `0.5.5` | Audio capture/playback for STT |
+| `numpy`          | `2.4.3` | Required by faster-whisper     |
+
+> :information_source: The `uv` binary is installed by the hermes-agent installer at
+> `${HERMES_HOME:-/root/.hermes}/bin/uv`. If `uv` is not found, the faster-whisper install is
+> skipped with a warning, and STT will fall back to lazy installation on first use.
+
+#### hermes-webui bake file usage<a name="hermes-webui-bake-file-usage"></a>
+
+The hermes-webui partial contains a devcontainer bake config file. See
+[Devcontainer bake files](#devcontainer-bake-files) for general usage. The hermes-webui bake config
+file accepts the following inputs:
+
+| Variable               | Required | Default                                                                  | Effect                                    |
+| ---------------------- | -------- | ------------------------------------------------------------------------ | ----------------------------------------- |
+| `HERMES_WEBUI_VERSION` | ✗        | `"v0.52.106"`                                                            | Git tag of the hermes-webui source to use |
+| `HERMES_WEBUI_SOURCE`  | ✗        | `"https://github.com/nesquena/hermes-webui.git#${HERMES_WEBUI_VERSION}"` | Full source URL for the hermes-webui repo |
+
+The
+[`devcontainer-bake.hcl` config `devcontainer_layers` variable](#devcontainer-bake-files-devcontainer-cache-build-devcontainerdevcontainer-bakehcl-config)
+must list `"hermes-webui"` in its `devcontainer_layers` list. The `hermes-webui` target must appear
+after any layers it depends on (typically `docker-client`, `useradd`, and `pre-commit`).
+
+#### hermes-webui Codespaces usage<a name="hermes-webui-codespaces-usage"></a>
+
+For use in [Codespaces](https://github.com/features/codespaces) devcontainers, the following
+environment variables and secrets must be configured:
+
+**Required Codespaces secrets:**
+
+| Secret                  | Purpose                               |
+| ----------------------- | ------------------------------------- |
+| `OPENROUTER_API_KEY`    | API key for the LLM provider          |
+| `HERMES_WEBUI_PASSWORD` | Password for the webui authentication |
+
+**Recommended Codespaces environment variables** (referenced by the local env file, not the Docker
+layer itself):
+
+| Variable                       | Purpose                            |
+| ------------------------------ | ---------------------------------- |
+| `HERMES_WEBUI_DEFAULT_MODEL`   | Default LLM model for the webui    |
+| `HERMES_WEBUI_SKIP_ONBOARDING` | Skip the first-run onboarding flow |
+
+**Local env file:**
+
+The partial uses a local env file at `${CONTAINER_WORKSPACE_FOLDER}/.hermes-webui.env` to inject API
+keys and configuration at container start time. This file is sourced by the `post_start_command`
+script, which:
+
+1. Creates a `.hermes` directory in the workspace (`${CONTAINER_WORKSPACE_FOLDER}/.hermes`)
+1. Symlinks `$HERMES_HOME` (default: `/root/.hermes`) to the workspace `.hermes` directory
+1. Writes `$HERMES_HOME/.env` with the exported environment variables
+1. Sources the generated `.env` file so the webui can access the configuration
+
+The `.hermes-webui.env` file is **not part of the Docker layer definition** — it is a local script
+in the repository that runs inside the container at start time. It reads values from Codespaces
+secrets and environment variables:
+
+| Variable                     | Source             | Purpose                                                      |
+| ---------------------------- | ------------------ | ------------------------------------------------------------ |
+| `OPENROUTER_API_KEY`         | Codespaces secret  | API key for the LLM provider                                 |
+| `HERMES_WEBUI_PASSWORD`      | Codespaces secret  | Password for webui authentication                            |
+| `HERMES_WEBUI_DEFAULT_MODEL` | env var or default | Default LLM model (defaults to `poolside/laguna-s-2.1:free`) |
+
+The file is referenced via the `HERMES_WEBUI_ENV_FILE` container env variable set in
+`devcontainer.json`:
+
+```json
+{
+  "containerEnv": {
+    "HERMES_WEBUI_ENV_FILE": "${containerWorkspaceFolder}/.hermes-webui.env"
+  }
+}
+```
+
+**Recommended `CONTAINER_WORKSPACE_FOLDER` configuration:**
+
+The `CONTAINER_WORKSPACE_FOLDER` variable must be set in `devcontainer.json` `containerEnv` to point
+at the Codespace workspace path. For Codespaces, use:
+
+```json
+{
+  "containerEnv": {
+    "CONTAINER_WORKSPACE_FOLDER": "${containerWorkspaceFolder}"
+  }
+}
+```
+
+**Recommended pattern for creating a similar local env file:**
+
+If you are building a custom devcontainer that uses the hermes-webui layer, you can create your own
+env setup file following this pattern:
+
+```bash
+#!/bin/bash
+
+# Applicable if in a Codespaces environment
+if [ -f /workspaces/.codespaces/shared/.env ]; then
+	# shellcheck disable=SC1091
+	set -a
+	. /workspaces/.codespaces/shared/.env
+	set +a
+fi
+
+HERMES_HOME="${HERMES_HOME:-${HOME}/.hermes}"
+
+mkdir -p "${CONTAINER_WORKSPACE_FOLDER}/.hermes"
+sudo ln -sfn "${CONTAINER_WORKSPACE_FOLDER}/.hermes" "${HERMES_HOME}"
+sudo chown -R "${USER}:${USER}" "${HERMES_HOME}"
+cat <<EOF >"${HERMES_HOME}/.env"
+export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+# Fallback: defaults to the OpenRouter key as a safety net
+export HERMES_CUSTOM_INFERENCE_POOLSIDE_AI_API_KEY="${HERMES_CUSTOM_INFERENCE_POOLSIDE_AI_API_KEY:-${OPENROUTER_API_KEY:-}}"
+export HERMES_WEBUI_PASSWORD="${HERMES_WEBUI_PASSWORD:-}"
+export HERMES_WEBUI_DEFAULT_MODEL="${HERMES_WEBUI_DEFAULT_MODEL:-poolside/laguna-s-2.1:free}"
+export HERMES_WEBUI_SKIP_ONBOARDING=1
+export HERMES_WEBUI_DEFAULT_WORKSPACE="${CONTAINER_WORKSPACE_FOLDER}"
+EOF
+
+source "${HERMES_HOME}/.env"
+```
+
+Then reference it from `devcontainer.json`:
+
+```json
+{
+  "containerEnv": {
+    "CONTAINER_WORKSPACE_FOLDER": "${containerWorkspaceFolder}",
+    "HERMES_WEBUI_ENV_FILE": "${containerWorkspaceFolder}/my-hermes-env.sh"
+  },
+  "postStartCommand": ". ${containerWorkspaceFolder}/my-hermes-env.sh && ..."
+}
+```
+
+**Port forwarding:**
+
+Port `8787` is automatically forwarded via the `forwardPorts` setting in `devcontainer.json`. On
+Codespaces, the `post_start_command` script makes the port publicly accessible using:
+
+```bash
+gh codespace ports visibility 8787:public --codespace "$CODESPACE_NAME"
+```
+
+If not running in a Codespace, the script safely exits without error.
 
 ## pre-commit reusable workflow<a name="pre-commit-reusable-workflow"></a>
 

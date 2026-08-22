@@ -1,0 +1,51 @@
+#!/bin/bash
+# Starts the webui server if not already running.
+# Make Hermes WebUI port publicly accessible on Codespace start.
+# Uses gh CLI to change port visibility from private to public.
+set -euo pipefail
+
+#shellcheck disable=SC1090
+source "${HERMES_WEBUI_ENV_FILE}"
+/opt/devcontainers/hermes-webui/ctl.sh start
+
+# Wait for the webui server to become healthy before making the port public.
+echo "Waiting for Hermes WebUI to become healthy..."
+_wait=0
+while [ "${_wait}" -lt 300 ]; do
+  if /opt/devcontainers/hermes-webui/ctl.sh status 2>/dev/null | grep -q 'Health:.*ok'; then
+    echo "Hermes WebUI is healthy"
+    break
+  fi
+  sleep 5
+  _wait=$((_wait + 5))
+done
+
+# Only make the port public inside a Codespace
+if [ -z "${CODESPACE_NAME:-}" ]; then
+  echo "Not running in a Codespace — skipping public port setup"
+  exit 0
+fi
+
+# Ensure gh is authenticated for codespace port management.
+_gh_token="${GITHUB_TOKEN:-}"
+if [ -z "${_gh_token}" ]; then
+  _env_file="/workspaces/.codespaces/shared/.env"
+  if [ -f "${_env_file}" ]; then
+    _gh_token="$(grep '^GITHUB_TOKEN=' "${_env_file}" | cut -d= -f2-)"
+  fi
+fi
+
+if [ -n "${_gh_token}" ]; then
+  echo "Authenticating gh CLI..."
+  # Always re-auth to ensure tokens are fresh and have the right scopes
+  printf '%s\n' "${_gh_token}" | gh auth login --with-token 2>/dev/null || true
+fi
+
+# Make port 8787 publicly accessible
+# See: https://docs.github.com/en/codespaces/setting-up-your-project-for-codespaces/forwarding-ports-in-your-codespace
+echo "Making port 8787 public on Codespace: $CODESPACE_NAME"
+gh codespace ports visibility 8787:public --codespace "$CODESPACE_NAME" 2>/dev/null || \
+  echo "[warn] Could not change port visibility — port may still be accessible as private"
+
+echo "Port 8787 is now publicly accessible"
+echo "URL: https://${CODESPACE_NAME}-8787.app.github.dev"
