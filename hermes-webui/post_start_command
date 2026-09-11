@@ -41,15 +41,10 @@ if [ -n "${HERMES_WEBUI_PASSWORD:-}" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "Non
 fi
 
 # Poll /api/system/health until status == "ok" AND available == true
-_auth_arg=""
-if [ -f "${_cookie_jar}" ]; then
-  _auth_arg="-b ${_cookie_jar}"
-fi
-
 _ready=0
 _wait=0
 while [ "${_wait}" -lt 120 ]; do
-  _resp="$(curl -s --max-time 5 "${_health_url}" "${_auth_arg}" 2>/dev/null)" || true
+  _resp="$(curl -s --max-time 5 "${_health_url}" -b "${_cookie_jar}" 2>/dev/null)" || true
   if printf '%s' "${_resp}" | grep -q '"status".*"ok"' && printf '%s' "${_resp}" | grep -q '"available".*true'; then
     _ready=1
     break
