@@ -5,18 +5,13 @@
 # to 8787 and serves a landing page while the WebUI is still starting up.
 set -euo pipefail
 
-# Source the Hermes WebUI env file (selective parsing to avoid UID readonly)
+# Source the Hermes WebUI env file.
+# This file is a bash script (not just KEY=VALUE pairs) — it handles
+# extracting env vars from /workspaces/.codespaces/shared/.env while
+# skipping readonly vars like UID.
 if [ -n "${HERMES_WEBUI_ENV_FILE:-}" ] && [ -f "${HERMES_WEBUI_ENV_FILE}" ]; then
-  while IFS='=' read -r key value; do
-    case "$key" in
-      UID|USER|HOME|PWD|LOGNAME|CODESPACES|SHELL|_|HERMES_WEBUI_ENV_FILE|CONTAINER_WORKSPACE_FOLDER|DEVCONTAINER_HOST_WORKSPACE_FOLDER)
-        # Skip readonly/conflicting variables
-        ;;
-      *)
-        export "$key=$value"
-        ;;
-    esac
-  done < "${HERMES_WEBUI_ENV_FILE}"
+  # shellcheck disable=SC1090
+  source "${HERMES_WEBUI_ENV_FILE}"
 fi
 
 # --- Start Hermes WebUI ---
