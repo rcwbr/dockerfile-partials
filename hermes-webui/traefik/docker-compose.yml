@@ -2,17 +2,14 @@ name: traefik-webui-proxy
 
 services:
   traefik:
-    image: traefik:v3.1
+    build:
+      context: /opt/devcontainers/hermes-webui/traefik
+      dockerfile: Dockerfile
+    image: traefik-webui-proxy:latest
     container_name: traefik-webui-proxy
     ports:
       - "8780:8780"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "/opt/devcontainers/hermes-webui/traefik/traefik.yml:/etc/traefik/traefik.yml:ro"
-      - "/opt/devcontainers/hermes-webui/traefik/dynamic:/etc/traefik/dynamic:ro"
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
       - "--providers.file.directory=/etc/traefik/dynamic"
       - "--providers.file.watch=true"
       - "--entrypoints.web.address=:8780"
@@ -20,10 +17,13 @@ services:
 
   # Landing page served when the Hermes WebUI is not yet ready (502/503/504)
   landing:
-    image: caddy:2-alpine
+    build:
+      context: /opt/devcontainers/hermes-webui/traefik
+      dockerfile: landing.Dockerfile
+    image: traefik-webui-landing:latest
     container_name: traefik-webui-landing
-    volumes:
-      - "/opt/devcontainers/hermes-webui/traefik/static:/usr/share/caddy"
+    ports:
+      - "8081:8081"
     command: ["caddy", "file-server", "--listen", ":8081", "--root", "/usr/share/caddy"]
     restart: unless-stopped
 

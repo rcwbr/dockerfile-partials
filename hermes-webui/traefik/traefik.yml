@@ -7,8 +7,6 @@ entryPoints:
     address: ":8780"
 
 providers:
-  docker:
-    exposedByDefault: false
   file:
     directory: "/etc/traefik/dynamic"
     watch: true

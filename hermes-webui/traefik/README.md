@@ -13,17 +13,19 @@ Browser -> Codespaces Port Forward (8780) -> Traefik (Docker, port 8780) -> Herm
 
 The Hermes WebUI runs directly inside the devcontainer (not as a Docker container). Traefik runs in
 a Docker container and proxies to `172.17.0.1:8787` (the Docker bridge gateway -> devcontainer
-host).
+host). The Traefik and landing page configs are baked into custom Docker images via `Dockerfile` and
+`landing.Dockerfile` (bind mounts of overlay FS files don't work reliably in Codespaces). The
+compose file lives at `/opt/devcontainers/hermes-webui/traefik/docker-compose.yml`.
 
 ## Files
 
-| File                 | Purpose                                                         |
-| -------------------- | --------------------------------------------------------------- |
-| `docker-compose.yml` | Traefik service definition + landing page service               |
-| `traefik.yml`        | Static configuration (entrypoints, providers, logging)          |
-| `dynamic/webui.yml`  | Dynamic configuration (router, service, error pages middleware) |
-| `static/index.html`  | Landing page HTML shown when WebUI is not ready                 |
-| `README.md`          | This file                                                       |
+| File | Purpose | | -------------------- |
+--------------------------------------------------------------- | | `docker-compose.yml` | Traefik
+service definition + landing page service | | `Dockerfile` | Builds custom Traefik image with config
+baked in | | `landing.Dockerfile` | Builds custom Caddy image with landing page baked in | |
+`traefik.yml` | Static configuration (entrypoints, providers, logging) | | `dynamic/webui.yml` |
+Dynamic configuration (router, service, error pages middleware) | | `static/index.html` | Landing
+page HTML shown when WebUI is not ready | | `README.md` | This file |
 
 ## How the Landing Page Works
 
@@ -43,34 +45,33 @@ needed for Traefik).
 ### Start the proxy
 
 ```bash
-docker compose -f traefik/docker-compose.yml up -d
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml up -d
 ```
 
 ### Check status
 
 ```bash
-docker compose -f traefik/docker-compose.yml ps
-docker compose -f traefik/docker-compose.yml logs --tail 20
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml ps
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml logs --tail 20
 ```
 
 ### Stop the proxy
 
 ```bash
-docker compose -f traefik/docker-compose.yml down
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml down
 ```
 
 ### Follow logs
 
 ```bash
-docker compose -f traefik/docker-compose.yml logs -f
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml logs -f
 ```
 
 ## Port Mapping
 
-| Source         | Destination               | Description                                     |
-| -------------- | ------------------------- | ----------------------------------------------- |
-| 8780 (exposed) | 8780 (Traefik entrypoint) | Public port for the proxy                       |
-| 8787 (host)    | —                         | Direct WebUI access (still works independently) |
+| Source | Destination | Description | | -------------- | ------------------------- |
+----------------------------------------------- | | 8780 (exposed) | 8780 (Traefik entrypoint) |
+Public port for the proxy | | 8787 (host) | — | Direct WebUI access (still works independently) |
 
 ## Configuration Details
 
