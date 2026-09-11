@@ -92,7 +92,9 @@ This approach uses two different APIs:
 | `.hermes-webui.env`               | Fixed `UID` readonly error via selective var parsing; exports for `GITHUB_TOKEN` and `CODESPACE_NAME`                                                                                                        |
 | `.devcontainer/devcontainer.json` | Added sshd feature for debugging; kept `forwardPorts: [8787]` as a best-effort hint                                                                                                                          |
 
-## Testing Results (on `port-test-5x5vjqxx4qqh7x9r` Codespace)
+## Testing Results
+
+### Test 1: Manual verification on `port-test-5x5vjqxx4qqh7x9r` Codespace
 
 1. ✅ WebUI health check passes: `status: ok, available: true` (CPU, memory, disk metrics)
 1. ✅ Port 8787 not registered by `forwardPorts` (confirmed via Tunnels API)
@@ -100,6 +102,15 @@ This approach uses two different APIs:
 1. ✅ `gh codespace ports visibility 8787:public` succeeded after port was registered
 1. ✅ `curl https://port-test-5x5vjqxx4qqh7x9r-8787.app.github.dev/health` returns
    `{"status":"ok",...}` — publicly accessible
+
+### Test 2: Fresh Codespace on `port-final-test-qp6vjqpppgrf4x6v` (from branch)
+
+1. ✅ **postStartCommand status: SUCCEEDED** (no manual intervention needed)
+1. ✅ `gh codespace ports` shows port 8787 as `public`
+1. ✅ `browseUrl: https://port-final-test-qp6vjqpppgrf4x6v-8787.app.github.dev`
+1. ✅ `curl https://port-final-test-qp6vjqpppgrf4x6v-8787.app.github.dev/health` returns
+   `{"status": "ok", "server_started_at": ..., "uptime_seconds": 14.3, ...}`
+1. ✅ WebUI is publicly accessible from the internet
 
 ## Remaining
 
