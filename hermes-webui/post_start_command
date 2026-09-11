@@ -1,8 +1,8 @@
 #!/bin/bash
-# Starts the webui server and Traefik reverse proxy, then makes port 8780
+# Starts the webui server and Traefik reverse proxy, then makes port 8787
 # publicly accessible on Codespace start.
-# Port 8780 (Traefik) proxies to port 8787 (Hermes WebUI) and serves a
-# landing page while the WebUI is still starting up.
+# Port 8787 is the main WebUI port. Port 8780 runs Traefik which proxies
+# to 8787 and serves a landing page while the WebUI is still starting up.
 set -euo pipefail
 
 # Source the Hermes WebUI env file
@@ -13,12 +13,11 @@ source "${HERMES_WEBUI_ENV_FILE}"
 /opt/devcontainers/hermes-webui/ctl.sh start
 
 # --- Start Traefik proxy (port 8780 -> 8787) ---
-# The proxy provides a landing page while the WebUI boots and adds a stable
-# public entry point. We start it AFTER the WebUI so the health probe has
-# a target to forward to immediately.
-_COMPOSE_FILE="/opt/devcontainers/hermes-webui/traefik/docker-compose.yml"
+# The proxy provides a landing page while the WebUI boots. Port 8780 is
+# auto-detected by the Codespace port forwarding service when Traefik
+# starts listening (no need for forwardPorts on 8780).
 echo "Starting Traefik reverse proxy on port 8780..."
-docker compose -f "${_COMPOSE_FILE}" up -d
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml up -d --build 2>/dev/null
 
 # --- Wait for the WebUI server to become fully ready ---
 # Polls /api/system/health for status: ok AND available: true.
@@ -61,7 +60,7 @@ fi
 
 echo "Hermes Web UI is ready (status: ok, available: true)"
 
-# --- Make port 8780 (Traefik) publicly accessible ---
+# --- Make port 8787 publicly accessible ---
 # Only do this inside a Codespace.
 # CODESPACE_NAME may not be set as a container env var on all Codespace
 # configurations. Fall back to reading it from the shared env file.
@@ -100,23 +99,24 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# Make port 8780 publicly accessible (Traefik entry point).
-# Port 8787 (WebUI direct) stays private — access goes through Traefik on 8780.
-echo "Making port 8780 (Traefik proxy) public on Codespace: ${CODESPACE_NAME}"
-if gh codespace ports visibility 8780:public --codespace "${CODESPACE_NAME}" 2>/dev/null; then
+# Make port 8787 publicly accessible.
+# Port 8787 is pre-registered via forwardPorts in devcontainer.json.
+# The Traefik proxy on port 8780 is auto-detected by the Codespace port forwarder.
+echo "Making port 8787 public on Codespace: ${CODESPACE_NAME}"
+if gh codespace ports visibility 8787:public --codespace "${CODESPACE_NAME}" 2>/dev/null; then
   # Verify the port is actually public now
-  _visibility="$(gh codespace ports --codespace "${CODESPACE_NAME}" 2>/dev/null | awk '/8780/ {print $4}')"
+  _visibility="$(gh codespace ports --codespace "${CODESPACE_NAME}" 2>/dev/null | awk '/8787/ {print $4}')"
   if [ "${_visibility}" = "public" ]; then
-    echo "Port 8780 is now publicly accessible (Traefik proxy -> WebUI on 8787)"
-    echo "URL: https://${CODESPACE_NAME}-8780.app.github.dev"
+    echo "Port 8787 is now publicly accessible"
+    echo "URL: https://${CODESPACE_NAME}-8787.app.github.dev"
   else
-    echo "[error] Port visibility command succeeded but port 8780 is '${_visibility}' (expected 'public')" >&2
+    echo "[error] Port visibility command succeeded but port 8787 is '${_visibility}' (expected 'public')" >&2
     echo "[error] gh codespace ports shows:" >&2
     gh codespace ports --codespace "${CODESPACE_NAME}" 2>&1 | head -20 >&2 || true
     exit 1
   fi
 else
-  echo "[error] Failed to set port 8780 visibility to public on Codespace: ${CODESPACE_NAME}" >&2
+  echo "[error] Failed to set port 8787 visibility to public on Codespace: ${CODESPACE_NAME}" >&2
   echo "[error] gh codespace ports visibility command returned non-zero exit code" >&2
   echo "[error] Current port state:" >&2
   gh codespace ports --codespace "${CODESPACE_NAME}" 2>&1 | head -20 >&2 || true
