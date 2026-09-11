@@ -26,7 +26,20 @@ if [ "${_wait}" -ge 300 ]; then
   exit 1
 fi
 
-# Only make the port public inside a Codespace
+# Only make the port public inside a Codespace.
+# CODESPACE_NAME may not be set as a container env var on all Codespace
+# configurations (e.g. when using "image" mode without the devcontainer
+# remoteEnv propagation). Fall back to reading it from the shared env file.
+if [ -z "${CODESPACE_NAME:-}" ]; then
+  _env_file="/workspaces/.codespaces/shared/.env"
+  if [ -f "${_env_file}" ]; then
+    _codespace_name="$(grep '^CODESPACE_NAME=' "${_env_file}" | cut -d= -f2-)"
+    if [ -n "${_codespace_name}" ]; then
+      CODESPACE_NAME="${_codespace_name}"
+    fi
+  fi
+fi
+
 if [ -z "${CODESPACE_NAME:-}" ]; then
   echo "Not running in a Codespace — skipping public port setup"
   exit 0
