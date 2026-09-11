@@ -5,9 +5,19 @@
 # to 8787 and serves a landing page while the WebUI is still starting up.
 set -euo pipefail
 
-# Source the Hermes WebUI env file
-#shellcheck disable=SC1090
-source "${HERMES_WEBUI_ENV_FILE}"
+# Source the Hermes WebUI env file (selective parsing to avoid UID readonly)
+if [ -n "${HERMES_WEBUI_ENV_FILE:-}" ] && [ -f "${HERMES_WEBUI_ENV_FILE}" ]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      UID|USER|HOME|PWD|LOGNAME|CODESPACES|SHELL|_|HERMES_WEBUI_ENV_FILE|CONTAINER_WORKSPACE_FOLDER|DEVCONTAINER_HOST_WORKSPACE_FOLDER)
+        # Skip readonly/conflicting variables
+        ;;
+      *)
+        export "$key=$value"
+        ;;
+    esac
+  done < "${HERMES_WEBUI_ENV_FILE}"
+fi
 
 # --- Start Hermes WebUI ---
 /opt/devcontainers/hermes-webui/ctl.sh start
@@ -17,7 +27,7 @@ source "${HERMES_WEBUI_ENV_FILE}"
 # auto-detected by the Codespace port forwarding service when Traefik
 # starts listening (no need for forwardPorts on 8780).
 echo "Starting Traefik reverse proxy on port 8780..."
-docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml up -d --build 2>/dev/null
+docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml up -d --build 2>/dev/null || true
 
 # --- Wait for the WebUI server to become fully ready ---
 # Polls /api/system/health for status: ok AND available: true.
@@ -43,10 +53,12 @@ fi
 _ready=0
 _wait=0
 while [ "${_wait}" -lt 120 ]; do
-  _resp="$(curl -s --max-time 5 "${_health_url}" -b "${_cookie_jar}" 2>/dev/null)" || true
-  if printf '%s' "${_resp}" | grep -q '"status".*"ok"' && printf '%s' "${_resp}" | grep -q '"available".*true'; then
-    _ready=1
-    break
+  if curl -s --max-time 5 -o /dev/null -w '%{http_code}' "${_health_url}" -b "${_cookie_jar}" 2>/dev/null | grep -q '^200'; then
+    _resp="$(curl -s --max-time 5 "${_health_url}" -b "${_cookie_jar}" 2>/dev/null)" || true
+    if printf '%s' "${_resp}" | grep -q '"status".*"ok"' && printf '%s' "${_resp}" | grep -q '"available".*true'; then
+      _ready=1
+      break
+    fi
   fi
   sleep 5
   _wait=$((_wait + 5))
@@ -54,7 +66,7 @@ done
 
 if [ "${_ready}" -ne 1 ]; then
   echo "[error] Hermes Web UI did not become ready (status:ok + available:true) within 120 seconds" >&2
-  echo "[error] Last response: ${_resp}" >&2
+  echo "[error] Last response: ${_resp:-<empty>}" >&2
   exit 1
 fi
 
@@ -88,7 +100,6 @@ if [ -z "${_gh_token}" ]; then
 fi
 
 if [ -n "${_gh_token}" ]; then
-  echo "Configuring gh CLI authentication..."
   export GH_TOKEN="${_gh_token}"
 fi
 
@@ -99,26 +110,100 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# Make port 8787 publicly accessible.
-# Port 8787 is pre-registered via forwardPorts in devcontainer.json.
-# The Traefik proxy on port 8780 is auto-detected by the Codespace port forwarder.
+# Ensure port 8787 is registered. The forwardPorts directive in
+# devcontainer.json should pre-register the port, but on pre-built Docker
+# images the Codespace port-forwarding proxy sometimes fails to detect it.
+# If the port is not visible via `gh codespace ports`, create it directly
+# on the Codespace's VS Code Tunnel using the Tunnels Management API.
 echo "Making port 8787 public on Codespace: ${CODESPACE_NAME}"
+
+# Try setting visibility directly first (works if port is pre-registered)
 if gh codespace ports visibility 8787:public --codespace "${CODESPACE_NAME}" 2>/dev/null; then
-  # Verify the port is actually public now
-  _visibility="$(gh codespace ports --codespace "${CODESPACE_NAME}" 2>/dev/null | awk '/8787/ {print $4}')"
+  _visibility="$(gh codespace ports --codespace "${CODESPACE_NAME}" --json sourcePort,visibility --jq '.[] | select(.sourcePort == 8787) | .visibility' 2>/dev/null)"
   if [ "${_visibility}" = "public" ]; then
     echo "Port 8787 is now publicly accessible"
     echo "URL: https://${CODESPACE_NAME}-8787.app.github.dev"
-  else
-    echo "[error] Port visibility command succeeded but port 8787 is '${_visibility}' (expected 'public')" >&2
-    echo "[error] gh codespace ports shows:" >&2
-    gh codespace ports --codespace "${CODESPACE_NAME}" 2>&1 | head -20 >&2 || true
-    exit 1
+    exit 0
   fi
-else
-  echo "[error] Failed to set port 8787 visibility to public on Codespace: ${CODESPACE_NAME}" >&2
-  echo "[error] gh codespace ports visibility command returned non-zero exit code" >&2
-  echo "[error] Current port state:" >&2
+  echo "[error] Port visibility command succeeded but port 8787 is '${_visibility:-<unknown>}' (expected 'public')" >&2
   gh codespace ports --codespace "${CODESPACE_NAME}" 2>&1 | head -20 >&2 || true
   exit 1
 fi
+
+# --- Fallback: register port 8787 via the Tunnels Management API ---
+# The Codespace's port-forwarding tunnel uses the VS Code Tunnels protocol.
+# When forwardPorts doesn't register the port, we create it ourselves.
+echo "Port 8787 not registered via forwardPorts — creating via Tunnels API..."
+
+# Get the Codespace details (includes tunnelProperties with auth tokens)
+_cs_info="$(gh api "/user/codespaces/${CODESPACE_NAME}?internal=true&refresh=true" \
+  -H "Accept: application/vnd.github+json" 2>/dev/null)"
+
+if [ -z "${_cs_info}" ]; then
+  echo "[error] Failed to retrieve Codespace details for ${CODESPACE_NAME}" >&2
+  exit 1
+fi
+
+# Extract tunnel properties using python3 (more reliable than grep/jq)
+_tunnel_info="$(printf '%s' "${_cs_info}" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    tp = d.get('connection', {}).get('tunnelProperties', {})
+    print(json.dumps(tp))
+except Exception as e:
+    print(json.dumps({'error': str(e)}))
+" 2>/dev/null)"
+
+if [ -z "${_tunnel_info}" ] || printf '%s' "${_tunnel_info}" | grep -q '"error"'; then
+  echo "[error] Failed to extract tunnel properties from Codespace details" >&2
+  exit 1
+fi
+
+_tunnel_id="$(printf '%s' "${_tunnel_info}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tunnelId',''))")"
+_tunnel_token="$(printf '%s' "${_tunnel_info}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('managePortsAccessToken',''))")"
+_tunnel_service_uri="$(printf '%s' "${_tunnel_info}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('serviceUri',''))")"
+
+if [ -z "${_tunnel_id}" ] || [ -z "${_tunnel_token}" ] || [ -z "${_tunnel_service_uri}" ]; then
+  echo "[error] Missing tunnel connection properties (tunnelId/token/serviceUri)" >&2
+  exit 1
+fi
+
+# Create port 8787 on the tunnel, with public (anonymous) access.
+# The Tunnels Management API accepts PUT to create/replace a port.
+# accessControl with Anonymous + connect scope makes the port publicly accessible.
+_create_resp="$(curl -s -X PUT \
+  "${_tunnel_service_uri}tunnels/${_tunnel_id}/ports/8787?api-version=2023-09-27-preview" \
+  -H "Authorization: Tunnel ${_tunnel_token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "portNumber": 8787,
+    "labels": ["UserForwardedPort"],
+    "protocol": "http",
+    "accessControl": {
+      "entries": [
+        {
+          "type": "Anonymous",
+          "subjects": [],
+          "scopes": ["connect"]
+        }
+      ]
+    },
+    "options": {
+      "isGloballyAvailable": true
+    }
+  }' 2>/dev/null)"
+
+# Verify the port was created and is publicly accessible
+if printf '%s' "${_create_resp}" | grep -q '"portForwardingUris"'; then
+  _url="$(printf '%s' "${_create_resp}" | python3 -c "import sys,json; print(json.load(sys.stdin)['portForwardingUris'][0])" 2>/dev/null)"
+  if [ -n "${_url}" ]; then
+    echo "Port 8787 is now publicly accessible"
+    echo "URL: ${_url}"
+    exit 0
+  fi
+fi
+
+echo "[error] Failed to create port 8787 on the Codespace tunnel" >&2
+echo "[error] Tunnels API response: ${_create_resp}" >&2
+exit 1
