@@ -57,8 +57,11 @@ if [ -z "${_gh_token}" ]; then
 fi
 
 if [ -n "${_gh_token}" ]; then
-  echo "Authenticating gh CLI..."
-  printf '%s\n' "${_gh_token}" | gh auth login --with-token
+  echo "Configuring gh CLI authentication..."
+  # Set GH_TOKEN environment variable for gh CLI authentication.
+  # We avoid `gh auth login --with-token` because piping to it in a postStartCommand
+  # context can cause stdin issues that prematurely terminate the script.
+  export GH_TOKEN="${_gh_token}"
 fi
 
 # Verify gh authentication before attempting port visibility change
