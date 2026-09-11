@@ -19,6 +19,9 @@
       "version": "latest"
     }
   },
+  "forwardPorts": [
+    8787
+  ],
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",
