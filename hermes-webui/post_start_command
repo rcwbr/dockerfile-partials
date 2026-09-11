@@ -9,31 +9,36 @@ source "${HERMES_WEBUI_ENV_FILE}"
 /opt/devcontainers/hermes-webui/ctl.sh start
 
 # Wait for the webui server to become fully ready before making the port public.
-# Polls /api/system/health (with auth) for status: ok AND available: true.
+# Polls /api/system/health for status: ok AND available: true.
 # This is more thorough than /health — it confirms system resources (CPU/memory/disk)
 # are available, not just that the accept loop is running.
-echo "Waiting for Hermes WebUI to become ready..."
+echo "Waiting for Hermes Web UI to become ready..."
 HWEBUI_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
 HWEBUI_PORT="${HERMES_WEBUI_PORT:-8787}"
 _health_url="http://${HWEBUI_HOST}:${HWEBUI_PORT}/api/system/health"
+_cookie_jar="/tmp/hermes_webui_cookiejar"
+rm -f "${_cookie_jar}"
 
-# Obtain a session cookie by logging in with the configured password.
-# /api/system/health requires authentication.
-_auth_cookie=""
+# If a password is configured, authenticate first to get a session cookie.
+# /api/system/health requires authentication when HERMES_WEBUI_PASSWORD is set.
 if [ -n "${HERMES_WEBUI_PASSWORD:-}" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "None" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "" ]; then
-  _login_resp="$(curl -s --max-time 5 -X POST "http://${HWEBUI_HOST}:${HWEBUI_PORT}/api/auth/login" \
+  curl -s --max-time 5 -X POST "http://${HWEBUI_HOST}:${HWEBUI_PORT}/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"password\": \"${HERMES_WEBUI_PASSWORD}\"}" \
-    -c - 2>/dev/null)" || true
-  _auth_cookie="$(printf '%s\n' "${_login_resp}" | grep -oP 'session_id\s+\S+' | awk '{print $1"="$NF}')"
+    -c "${_cookie_jar}" >/dev/null 2>/dev/null || true
 fi
 
 # Poll /api/system/health until status == "ok" AND available == true
+# Use -b cookie_jar if it was created (sends session cookie), otherwise no auth.
+_auth_arg=""
+if [ -f "${_cookie_jar}" ]; then
+  _auth_arg="-b ${_cookie_jar}"
+fi
+
 _ready=0
 _wait=0
 while [ "${_wait}" -lt 120 ]; do
-  _resp="$(curl -s --max-time 5 "${_health_url}" \
-    ${ _auth_cookie:+-H "Cookie: ${_auth_cookie}" } 2>/dev/null)" || true
+  _resp="$(curl -s --max-time 5 "${_health_url}" ${_auth_arg} 2>/dev/null)" || true
   if printf '%s' "${_resp}" | grep -q '"status".*"ok"' && printf '%s' "${_resp}" | grep -q '"available".*true'; then
     _ready=1
     break
@@ -43,12 +48,12 @@ while [ "${_wait}" -lt 120 ]; do
 done
 
 if [ "${_ready}" -ne 1 ]; then
-  echo "[error] Hermes WebUI did not become ready (status:ok + available:true) within 120 seconds" >&2
+  echo "[error] Hermes Web UI did not become ready (status:ok + available:true) within 120 seconds" >&2
   echo "[error] Last response: ${_resp}" >&2
   exit 1
 fi
 
-echo "Hermes WebUI is ready (status: ok, available: true)"
+echo "Hermes Web UI is ready (status: ok, available: true)"
 
 # Only make the port public inside a Codespace.
 # CODESPACE_NAME may not be set as a container env var on all Codespace
@@ -67,7 +72,7 @@ if [ -z "${CODESPACE_NAME:-}" ]; then
 fi
 
 # Ensure gh is authenticated for codespace port management.
-# GITHUB_TOKEN is NOT set in the container's shell environment by default;
+# GITHUB_TOKEN may not be set in the container's shell environment directly;
 # it lives in /workspaces/.codespaces/shared/.env. Read it from there as fallback.
 _gh_token="${GITHUB_TOKEN:-}"
 if [ -z "${_gh_token}" ]; then
@@ -103,7 +108,8 @@ if gh codespace ports visibility 8787:public --codespace "$CODESPACE_NAME" 2>/de
     echo "URL: https://${CODESPACE_NAME}-8787.app.github.dev"
   else
     echo "[error] Port visibility command succeeded but port 8787 is '${_visibility}' (expected 'public')" >&2
-    echo "[error] Try running manually: gh codespace ports visibility 8787:public --codespace \"${CODESPACE_NAME}\"" >&2
+    echo "[error] gh codespace ports shows:" >&2
+    gh codespace ports --codespace "$CODESPACE_NAME" 2>&1 >&2 || true
     exit 1
   fi
 else
