@@ -8,23 +8,47 @@ set -euo pipefail
 source "${HERMES_WEBUI_ENV_FILE}"
 /opt/devcontainers/hermes-webui/ctl.sh start
 
-# Wait for the webui server to become healthy before making the port public.
-# Polls ctl.sh status instead of a fixed sleep so we block only as long as needed.
-echo "Waiting for Hermes WebUI to become healthy..."
+# Wait for the webui server to become fully ready before making the port public.
+# Polls /api/system/health (with auth) for status: ok AND available: true.
+# This is more thorough than /health — it confirms system resources (CPU/memory/disk)
+# are available, not just that the accept loop is running.
+echo "Waiting for Hermes WebUI to become ready..."
+HWEBUI_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
+HWEBUI_PORT="${HERMES_WEBUI_PORT:-8787}"
+_health_url="http://${HWEBUI_HOST}:${HWEBUI_PORT}/api/system/health"
+
+# Obtain a session cookie by logging in with the configured password.
+# /api/system/health requires authentication.
+_auth_cookie=""
+if [ -n "${HERMES_WEBUI_PASSWORD:-}" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "None" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "" ]; then
+  _login_resp="$(curl -s --max-time 5 -X POST "http://${HWEBUI_HOST}:${HWEBUI_PORT}/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"password\": \"${HERMES_WEBUI_PASSWORD}\"}" \
+    -c - 2>/dev/null)" || true
+  _auth_cookie="$(printf '%s\n' "${_login_resp}" | grep -oP 'session_id\s+\S+' | awk '{print $1"="$NF}')"
+fi
+
+# Poll /api/system/health until status == "ok" AND available == true
+_ready=0
 _wait=0
-while [ "${_wait}" -lt 300 ]; do
-  if /opt/devcontainers/hermes-webui/ctl.sh status 2>/dev/null | grep -q 'Health:.*ok'; then
-    echo "Hermes WebUI is healthy"
+while [ "${_wait}" -lt 120 ]; do
+  _resp="$(curl -s --max-time 5 "${_health_url}" \
+    ${ _auth_cookie:+-H "Cookie: ${_auth_cookie}" } 2>/dev/null)" || true
+  if printf '%s' "${_resp}" | grep -q '"status".*"ok"' && printf '%s' "${_resp}" | grep -q '"available".*true'; then
+    _ready=1
     break
   fi
   sleep 5
   _wait=$((_wait + 5))
 done
 
-if [ "${_wait}" -ge 300 ]; then
-  echo "[error] Hermes WebUI did not become healthy within 300 seconds — skipping public port setup" >&2
+if [ "${_ready}" -ne 1 ]; then
+  echo "[error] Hermes WebUI did not become ready (status:ok + available:true) within 120 seconds" >&2
+  echo "[error] Last response: ${_resp}" >&2
   exit 1
 fi
+
+echo "Hermes WebUI is ready (status: ok, available: true)"
 
 # Only make the port public inside a Codespace.
 # CODESPACE_NAME may not be set as a container env var on all Codespace
@@ -33,10 +57,7 @@ fi
 if [ -z "${CODESPACE_NAME:-}" ]; then
   _env_file="/workspaces/.codespaces/shared/.env"
   if [ -f "${_env_file}" ]; then
-    _codespace_name="$(grep '^CODESPACE_NAME=' "${_env_file}" | cut -d= -f2-)"
-    if [ -n "${_codespace_name}" ]; then
-      CODESPACE_NAME="${_codespace_name}"
-    fi
+    CODESPACE_NAME="$(grep '^CODESPACE_NAME=' "${_env_file}" | cut -d= -f2-)"
   fi
 fi
 
