@@ -1,17 +1,29 @@
 #!/bin/bash
-# Starts the webui server if not already running.
-# Make Hermes WebUI port publicly accessible on Codespace start.
-# Uses gh CLI to change port visibility from private to public.
+# Starts the webui server and Traefik reverse proxy, then makes port 8780
+# publicly accessible on Codespace start.
+# Port 8780 (Traefik) proxies to port 8787 (Hermes WebUI) and serves a
+# landing page while the WebUI is still starting up.
 set -euo pipefail
 
+# Source the Hermes WebUI env file
 #shellcheck disable=SC1090
 source "${HERMES_WEBUI_ENV_FILE}"
+
+# --- Start Hermes WebUI ---
 /opt/devcontainers/hermes-webui/ctl.sh start
 
-# Wait for the webui server to become fully ready before making the port public.
+# --- Start Traefik proxy (port 8780 -> 8787) ---
+# The proxy provides a landing page while the WebUI boots and adds a stable
+# public entry point. We start it AFTER the WebUI so the health probe has
+# a target to forward to immediately.
+_COMPOSE_FILE="/opt/devcontainers/hermes-webui/traefik/docker-compose.yml"
+echo "Starting Traefik reverse proxy on port 8780..."
+docker compose -f "${_COMPOSE_FILE}" up -d
+
+# --- Wait for the WebUI server to become fully ready ---
 # Polls /api/system/health for status: ok AND available: true.
-# This is more thorough than /health — it confirms system resources (CPU/memory/disk)
-# are available, not just that the accept loop is running.
+# This is more thorough than /health — it confirms system resources
+# (CPU/memory/disk) are available, not just that the accept loop is running.
 echo "Waiting for Hermes Web UI to become ready..."
 HWEBUI_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
 HWEBUI_PORT="${HERMES_WEBUI_PORT:-8787}"
@@ -21,7 +33,7 @@ rm -f "${_cookie_jar}"
 
 # If a password is configured, authenticate first to get a session cookie.
 # /api/system/health requires authentication when HERMES_WEBUI_PASSWORD is set.
-if [ -n "${HERMES_WEBUI_PASSWORD:-}" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "None" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "" ]; then
+if [ -n "${HERMES_WEBUI_PASSWORD:-}" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "None" ]; then
   curl -s --max-time 5 -X POST "http://${HWEBUI_HOST}:${HWEBUI_PORT}/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"password\": \"${HERMES_WEBUI_PASSWORD}\"}" \
@@ -29,7 +41,6 @@ if [ -n "${HERMES_WEBUI_PASSWORD:-}" ] && [ "${HERMES_WEBUI_PASSWORD:-}" != "Non
 fi
 
 # Poll /api/system/health until status == "ok" AND available == true
-# Use -b cookie_jar if it was created (sends session cookie), otherwise no auth.
 _auth_arg=""
 if [ -f "${_cookie_jar}" ]; then
   _auth_arg="-b ${_cookie_jar}"
@@ -38,7 +49,7 @@ fi
 _ready=0
 _wait=0
 while [ "${_wait}" -lt 120 ]; do
-  _resp="$(curl -s --max-time 5 "${_health_url}" ${_auth_arg} 2>/dev/null)" || true
+  _resp="$(curl -s --max-time 5 "${_health_url}" "${_auth_arg}" 2>/dev/null)" || true
   if printf '%s' "${_resp}" | grep -q '"status".*"ok"' && printf '%s' "${_resp}" | grep -q '"available".*true'; then
     _ready=1
     break
@@ -55,10 +66,10 @@ fi
 
 echo "Hermes Web UI is ready (status: ok, available: true)"
 
-# Only make the port public inside a Codespace.
+# --- Make port 8780 (Traefik) publicly accessible ---
+# Only do this inside a Codespace.
 # CODESPACE_NAME may not be set as a container env var on all Codespace
-# configurations (e.g. when using "image" mode without the devcontainer
-# remoteEnv propagation). Fall back to reading it from the shared env file.
+# configurations. Fall back to reading it from the shared env file.
 if [ -z "${CODESPACE_NAME:-}" ]; then
   _env_file="/workspaces/.codespaces/shared/.env"
   if [ -f "${_env_file}" ]; then
@@ -84,9 +95,6 @@ fi
 
 if [ -n "${_gh_token}" ]; then
   echo "Configuring gh CLI authentication..."
-  # Set GH_TOKEN environment variable for gh CLI authentication.
-  # We avoid `gh auth login --with-token` because piping to it in a postStartCommand
-  # context can cause stdin issues that prematurely terminate the script.
   export GH_TOKEN="${_gh_token}"
 fi
 
@@ -97,25 +105,25 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-# Make port 8787 publicly accessible.
-# See: https://docs.github.com/en/codespaces/setting-up-your-project-for-codespaces/forwarding-ports-in-your-codespace
-echo "Making port 8787 public on Codespace: $CODESPACE_NAME"
-if gh codespace ports visibility 8787:public --codespace "$CODESPACE_NAME" 2>/dev/null; then
+# Make port 8780 publicly accessible (Traefik entry point).
+# Port 8787 (WebUI direct) stays private — access goes through Traefik on 8780.
+echo "Making port 8780 (Traefik proxy) public on Codespace: ${CODESPACE_NAME}"
+if gh codespace ports visibility 8780:public --codespace "${CODESPACE_NAME}" 2>/dev/null; then
   # Verify the port is actually public now
-  _visibility="$(gh codespace ports --codespace "$CODESPACE_NAME" 2>/dev/null | awk '/8787/ {print $4}')"
+  _visibility="$(gh codespace ports --codespace "${CODESPACE_NAME}" 2>/dev/null | awk '/8780/ {print $4}')"
   if [ "${_visibility}" = "public" ]; then
-    echo "Port 8787 is now publicly accessible"
-    echo "URL: https://${CODESPACE_NAME}-8787.app.github.dev"
+    echo "Port 8780 is now publicly accessible (Traefik proxy -> WebUI on 8787)"
+    echo "URL: https://${CODESPACE_NAME}-8780.app.github.dev"
   else
-    echo "[error] Port visibility command succeeded but port 8787 is '${_visibility}' (expected 'public')" >&2
+    echo "[error] Port visibility command succeeded but port 8780 is '${_visibility}' (expected 'public')" >&2
     echo "[error] gh codespace ports shows:" >&2
-    gh codespace ports --codespace "$CODESPACE_NAME" 2>&1 >&2 || true
+    gh codespace ports --codespace "${CODESPACE_NAME}" 2>&1 | head -20 >&2 || true
     exit 1
   fi
 else
-  echo "[error] Failed to set port 8787 visibility to public on Codespace: ${CODESPACE_NAME}" >&2
+  echo "[error] Failed to set port 8780 visibility to public on Codespace: ${CODESPACE_NAME}" >&2
   echo "[error] gh codespace ports visibility command returned non-zero exit code" >&2
   echo "[error] Current port state:" >&2
-  gh codespace ports --codespace "$CODESPACE_NAME" 2>&1 | head -20 >&2 || true
+  gh codespace ports --codespace "${CODESPACE_NAME}" 2>&1 | head -20 >&2 || true
   exit 1
 fi

@@ -20,7 +20,8 @@
     }
   },
   "forwardPorts": [
-    8787
+    8787,
+    8780
   ],
   "hostRequirements": {
     "cpus": 2,

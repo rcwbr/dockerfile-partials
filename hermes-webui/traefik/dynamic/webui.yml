@@ -1,0 +1,31 @@
+http:
+  routers:
+    hermes-webui:
+      rule: "PathPrefix(`/`)"
+      service: hermes-webui-svc
+      entryPoints:
+        - "web"
+      middlewares:
+        - "webui-errors"
+
+  middlewares:
+    webui-errors:
+      errors:
+        status: "502-504"
+        service: landing-svc
+        query: "/index.html"
+
+  services:
+    hermes-webui-svc:
+      loadBalancer:
+        servers:
+          - url: "http://172.17.0.1:8787"
+        healthCheck:
+          path: "/health"
+          interval: "5s"
+          method: "GET"
+
+    landing-svc:
+      loadBalancer:
+        servers:
+          - url: "http://landing:8081"
