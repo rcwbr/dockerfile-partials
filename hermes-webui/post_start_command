@@ -25,47 +25,54 @@ disown
 # --- Start Traefik reverse proxy (port 8780 -> 8787) ---
 # The Docker daemon runs on the Codespace host VM and cannot see files in the
 # devcontainer container's overlay filesystem at /opt/devcontainers/. Bind mounts
-# from docker compose are resolved by the host VM's Docker daemon, which has a
-# different filesystem view.
-# Solution: bake the Traefik config files into a Docker image layer by creating
-# a temporary container, copying config files into its filesystem, committing it
-# as a new image, then running the committed image. No volume mounts needed.
+# are resolved by the host VM's Docker daemon, which has a different filesystem
+# view. We cannot directly bind-mount config files from /opt/devcontainers/.
+#
+# Solution: write config files into a Docker named volume using base64 echo
+# (via a temporary container), then mount that volume into the Traefik container.
+# Named volumes are managed by Docker and persist across container restarts.
 echo "Starting Traefik reverse proxy on port 8780..."
 
-# Build a Traefik image with config baked in
-_docker_image="traefik:v3.7.13-hermes"
-_docker_tmp_container="traefik-config-builder"
+_traefik_vol="traefik-config-data"
+_traefik_src="/opt/devcontainers/hermes-webui/traefik"
 
-# Check if the image already exists
-if ! docker image inspect "${_docker_image}" >/dev/null 2>&1; then
-  echo "Building Traefik image with config..."
-  docker rm -f "${_docker_tmp_container}" 2>/dev/null || true
-  docker run -d --name "${_docker_tmp_container}" \
-    --entrypoint sleep traefik:v3.7.13 999 2>/dev/null
+# Create named volume (idempotent — docker volume create is safe to repeat)
+docker volume create "${_traefik_vol}" >/dev/null 2>&1
+
+# Check if config is already in the volume (skip re-population on restarts)
+if ! docker run --rm -v "${_traefik_vol}:/config" alpine:3.20 test -f /config/traefik.yml 2>/dev/null; then
+  echo "Populating Traefik config volume..."
+
+  # Start temp container to write config files into the named volume
+  docker rm -f traefik-vol-builder 2>/dev/null || true
+  docker run -d --name traefik-vol-builder \
+    -v "${_traefik_vol}:/etc/traefik" \
+    --entrypoint sleep alpine:3.20 999 2>/dev/null
   sleep 1
 
-  # Create config directory and write config files using base64 encoding
-  docker exec "${_docker_tmp_container}" mkdir -p /etc/traefik/dynamic
+  # Write config files using base64 encoding (avoids shell escaping issues)
+  docker exec traefik-vol-builder mkdir -p /etc/traefik/dynamic
 
-  _traefik_yml_b64="$(base64 -w0 /opt/devcontainers/hermes-webui/traefik/traefik.yml)"
-  _webui_yml_b64="$(base64 -w0 /opt/devcontainers/hermes-webui/traefik/dynamic/webui.yml)"
+  _traefik_yml_b64="$(base64 -w0 "${_traefik_src}/traefik.yml")"
+  _webui_yml_b64="$(base64 -w0 "${_traefik_src}/dynamic/webui.yml")"
 
-  docker exec "${_docker_tmp_container}" sh -c "echo '${_traefik_yml_b64}' | base64 -d > /etc/traefik/traefik.yml"
-  docker exec "${_docker_tmp_container}" sh -c "echo '${_webui_yml_b64}' | base64 -d > /etc/traefik/dynamic/webui.yml"
+  docker exec traefik-vol-builder sh -c "echo '${_traefik_yml_b64}' | base64 -d > /etc/traefik/traefik.yml"
+  docker exec traefik-vol-builder sh -c "echo '${_webui_yml_b64}' | base64 -d > /etc/traefik/dynamic/webui.yml"
 
-  # Commit the container as a new image with config baked in
-  docker commit "${_docker_tmp_container}" "${_docker_image}" >/dev/null
-  docker rm -f "${_docker_tmp_container}" >/dev/null 2>&1
-  echo "Image built successfully"
+  # Clean up temp container (volume persists)
+  docker rm -f traefik-vol-builder >/dev/null 2>&1
+  echo "Config volume populated"
 fi
 
-# Use --force-recreate to handle stale containers from prior sessions
+# Remove stale Traefik container if present
 docker rm -f traefik-proxy 2>/dev/null || true
+
+# Start Traefik from named volume (default entrypoint, no override needed)
 docker run -d --name traefik-proxy \
-  --entrypoint /entrypoint.sh \
-  --add-host=host.docker.internal:host-gateway \
   -p 8780:8780 \
-  "${_docker_image}" \
+  -v "${_traefik_vol}:/etc/traefik:ro" \
+  --add-host=host.docker.internal:host-gateway \
+  traefik:v3.7.13 \
   --configFile=/etc/traefik/traefik.yml 2>/dev/null
 
 # --- Wait for readiness and make port public ---
