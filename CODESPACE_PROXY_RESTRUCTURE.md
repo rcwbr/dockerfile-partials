@@ -57,5 +57,22 @@ URI embedded in the Traefik dynamic config — no separate backend server needed
 
 ## Deviations
 
-None yet. Any deviations discovered during implementation will be documented here and require user
-approval before proceeding.
+- **Deviation 1 (FOUND, NEEDS APPROVAL)**: `/opt/devcontainers/` is not accessible from
+  Docker-in-Docker containers inside the Codespace. The Docker daemon runs on the host VM and has
+  its own filesystem view. Files in the devcontainer's `/workspaces/` are visible to Docker
+  containers at `/var/lib/docker/codespacemount/workspace/`.
+
+  - **Fix applied**: The `post_start_command` derives the Docker-visible path from
+    `CONTAINER_WORKSPACE_FOLDER` and `CODESPACE_NAME` — maps
+    `/workspaces/dockerfile-partials/hermes-webui/traefik` →
+    `/var/lib/docker/codespacemount/workspace/dockerfile-partials/hermes-webui/traefik`. The
+    `docker-compose.yml` uses `${TRAEFIK_CONFIG_DIR}` env var for the bind mount source path.
+
+- **Deviation 2 (FOUND, NEEDS APPROVAL)**: Traefik v3.7.13 does NOT support `data:text/html` URIs as
+  `loadBalancer.servers[].url` values. The loadBalancer can only proxy to HTTP/HTTPS backends — it
+  cannot serve inline HTML/data-URI content. The `landing-svc` service fails to register, and
+  Traefik returns `500 Internal Server Error` instead of the landing page.
+
+  - **Proposed fix**: Revert to a simple `python3 -m http.server 8081` background process started
+    from `post_start_command` (the original option A). The Traefik dynamic config will proxy to
+    `host.docker.internal:8081` for the landing page fallback on 502/503/504.

@@ -1,17 +1,12 @@
 http:
   routers:
     hermes-webui:
-      rule: PathPrefix(`/`)
+      rule: "PathPrefix(`/`)"
       service: hermes-webui-svc
       entryPoints:
         - "web"
       middlewares:
         - "webui-errors"
-    landing:
-      rule: PathPrefix(`/`)
-      service: landing-svc
-      entryPoints:
-        - "web"
   middlewares:
     webui-errors:
       errors:
@@ -27,7 +22,7 @@ http:
           path: "/health"
           interval: "5s"
           method: "GET"
-    landing-svc:
+    landing:
       loadBalancer:
         servers:
-          - url: "data:text/html,%3C%21DOCTYPE%20html%3E%3Chtml%3E%3Chead%3E%3Cmeta%20charset%3D%22utf-8%22%3E%3Ctitle%3EHermes%20WebUI%20Starting%3C%2Ftitle%3E%3Cstyle%3Ebody%7Bfont-family%3A-apple-system%2CBlinkMacSystemFont%2C%27Segoe%20UI%27%2CRoboto%2Csans-serif%3Bbackground%3Alinear-gradient%28135deg%2C%231e293b%200%25%2C%23334155%20100%25%29%3Bcolor%3A%23e2e8f0%3Bheight%3A100vh%3Bdisplay%3Aflex%3Balign-items%3Acenter%3Bjustify-content%3Acenter%3Bmargin%3A0%7Dbody%3A%3Abefore%7Bcontent%3A%27%27%3Bdisplay%3Ablock%3Bwidth%3A50px%3Bheight%3A50px%3Bborder%3A3px%20solid%20rgba%2871%2C107%2C255%2C0.3%29%3Bborder-top-color%3A%234768ff%3Bborder-radius%3A50%25%3Banimation%3Aspin%201s%20linear%20infinite%3Bmargin-bottom%3A20px%7Dbody%3A%3Aafter%7Bcontent%3A%27Hermes%20WebUI%20starting%E2%80%A6%27%3Bfont-size%3A1.2rem%3Bcolor%3A%2394a3b8%7D%40keyframes%20spin%7Bto%7Btransform%3Arotate%28360deg%29%7D%7D%3C%2Fstyle%3E%3Cmeta%20http-equiv%3D%22refresh%22%20content%3D%2210%22%3E%3C%2Fhead%3E%3Cbody%3E%3C%2Fbody%3E%3C%2Fhtml%3E"
+          - url: "http://host.docker.internal:8081"

@@ -17,11 +17,34 @@ fi
 # --- Start Hermes WebUI ---
 /opt/devcontainers/hermes-webui/ctl.sh start
 
+# --- Start landing page server (Python http.server on port 8081) ---
+# Traefik serves the landing page while the WebUI is still starting.
+# This is a lightweight Python background process — no Docker container.
+echo "Starting landing page server on port 8081..."
+_landing_dir="/opt/devcontainers/hermes-webui/traefik/static"
+python3 -m http.server 8081 --directory "${_landing_dir}" --bind 0.0.0.0 &
+
 # --- Start Traefik reverse proxy (port 8780 -> 8787) ---
 # The proxy provides a landing page while the WebUI boots. Port 8780 is
 # made public on Codespaces via forwardPorts / the Tunnels API below.
 # Remove a stale container from a prior session, then start fresh.
 echo "Starting Traefik reverse proxy on port 8780..."
+
+# Derive the Docker-visible path for the traefik config files.
+# In Codespaces, the Docker daemon runs on the host VM. Files in the
+# devcontainer's /workspaces/ are visible to Docker containers at
+# /var/lib/docker/codespacemount/workspace/. We need this mapping for
+# Docker bind mounts in docker-compose.yml.
+# Falls back to /opt/devcontainers/ for non-Codespace Docker environments.
+_traefik_config_dir="/opt/devcontainers/hermes-webui/traefik"
+_cw="${CONTAINER_WORKSPACE_FOLDER:-/workspaces/dockerfile-partials}"
+if [ -n "${CODESPACE_NAME:-}" ]; then
+  # Running inside a Codespace — map /workspaces/ to Docker-visible path
+  _rel="${_cw#/workspaces/}"
+  _traefik_config_dir="/var/lib/docker/codespacemount/workspace/${_rel}/hermes-webui/traefik"
+fi
+export TRAEFIK_CONFIG_DIR="${_traefik_config_dir}"
+
 docker rm -f traefik-proxy 2>/dev/null || true
 docker compose -f /opt/devcontainers/hermes-webui/traefik/docker-compose.yml up -d 2>/dev/null || true
 
@@ -170,7 +193,7 @@ fi
 # accessControl with Anonymous + connect scope makes the port publicly accessible.
 _create_resp="$(curl -s -X PUT \
   "${_tunnel_service_uri}tunnels/${_tunnel_id}/ports/8780?api-version=2023-09-27-preview" \
-  -H "Authorization: Tunnel **PLACEHOLDER**" \
+  -H "Authorization: Tunnel ${_tunnel_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "portNumber": 8780,

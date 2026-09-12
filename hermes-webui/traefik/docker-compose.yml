@@ -9,8 +9,14 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - /opt/devcontainers/hermes-webui/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - /opt/devcontainers/hermes-webui/traefik/dynamic:/etc/traefik/dynamic:ro
+      - type: bind
+        source: ${TRAEFIK_CONFIG_DIR:-/opt/devcontainers/hermes-webui/traefik}/traefik.yml
+        target: /etc/traefik/traefik.yml
+        read_only: true
+      - type: bind
+        source: ${TRAEFIK_CONFIG_DIR:-/opt/devcontainers/hermes-webui/traefik}/dynamic
+        target: /etc/traefik/dynamic
+        read_only: true
     command:
       - "--configFile=/etc/traefik/traefik.yml"
     restart: unless-stopped
