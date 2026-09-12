@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""Ensure a Codespace port is registered as public via the Tunnels Management API.
+"""Ensure Codespace port is public via Tunnels Management API, with health polling.
 
 This script replaces the inline bash port-publishing logic in post_start_command.
 It:
-  1. Detects CODESPACE_NAME (from env or shared .env file)
-  2. Reads GITHUB_TOKEN for auth
-  3. Queries the Codespace details API for tunnel connection properties
-  4. Creates the port on the Codespace's VS Code Tunnel via PUT
-  5. Verifies the port is publicly accessible
+  1. Polls the Hermes WebUI /health endpoint until status == "ok" (max 120s)
+  2. If not in a Codespace, exits successfully (no-op)
+  3. If in a Codespace: detects name, reads GitHub token, queries the Codespace
+     details API for tunnel connection properties, creates the port on the VS Code
+     Tunnel via PUT, and verifies the port is publicly accessible
 
-Usage: ensure_port_public.py [PORT]
+Usage: finalize_port_public.py [PORT]
        Default PORT = 8780
 """
 
 import json
 import os
 import sys
+import time
 import subprocess
 import urllib.request
+import urllib.error
 
 ENV_FILE = '/workspaces/.codespaces/shared/.env'
 
@@ -32,6 +34,25 @@ def get_env_value(key: str) -> str | None:
             if line.startswith(key + '='):
                 return line[len(key) + 1:].strip()
     return None
+
+
+def wait_for_webui_health(host: str = '127.0.0.1', port: int = 8787, timeout: int = 120) -> bool:
+    """Poll /health until it returns status == 'ok' or timeout expires."""
+    health_url = f"http://{host}:{port}/health"
+    print(f"Waiting for Hermes Web UI at {health_url}...")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            req = urllib.request.Request(health_url)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                body = resp.read().decode()
+                if '"status"' in body and '"ok"' in body:
+                    print("Hermes Web UI is ready")
+                    return True
+        except (urllib.error.URLError, ConnectionError, OSError):
+            pass
+        time.sleep(5)
+    return False
 
 
 def get_codespace_name() -> str | None:
@@ -105,25 +126,36 @@ def tunnels_api_put(service_uri: str, tunnel_id: str, token: str, port: int) -> 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8780
 
-    # 1. Get Codespace name
+    # 1. Wait for WebUI to be ready
+    hwebui_host = os.environ.get('HERMES_WEBUI_HOST', '127.0.0.1')
+    hwebui_port = int(os.environ.get('HERMES_WEBUI_PORT', '8787'))
+    if not wait_for_webui_health(hwebui_host, hwebui_port, timeout=120):
+        print('[error] Hermes Web UI did not become ready within 120 seconds', file=sys.stderr)
+        sys.exit(1)
+
+    # 2. If not in a Codespace, nothing else to do
     codespace_name = get_codespace_name()
     if not codespace_name:
         print('Not running in a Codespace — skipping public port setup', file=sys.stderr)
         sys.exit(0)
 
-    # 2. Get GitHub token
+    # 3. Get GitHub token
     token = get_github_token()
     if not token:
         print('[error] GITHUB_TOKEN not found in env or shared .env', file=sys.stderr)
         sys.exit(1)
 
-    # 3. Verify gh authentication
-    auth_check = subprocess.run(['gh', 'auth', 'status'], capture_output=True, env={**os.environ, 'GH_TOKEN': token})
+    # 4. Verify gh authentication
+    auth_check = subprocess.run(
+        ['gh', 'auth', 'status'],
+        capture_output=True,
+        env={**os.environ, 'GH_TOKEN': token},
+    )
     if auth_check.returncode != 0:
         print('[error] gh CLI is not authenticated — cannot set port visibility', file=sys.stderr)
         sys.exit(1)
 
-    # 4. Get Codespace tunnel properties
+    # 5. Get Codespace tunnel properties
     print(f"Making port {port} public on Codespace: {codespace_name}")
     cs_info = gh_api(f"/user/codespaces/{codespace_name}?internal=true&refresh=true", token)
 
@@ -136,11 +168,11 @@ def main():
         print('[error] Missing tunnel connection properties', file=sys.stderr)
         sys.exit(1)
 
-    # 5. Create port on the tunnel
+    # 6. Create port on the tunnel
     print(f"Registering port {port} via Tunnels Management API...")
     create_resp = tunnels_api_put(service_uri, tunnel_id, tunnel_token, port)
 
-    # 6. Verify
+    # 7. Verify
     port_uris = create_resp.get('portForwardingUris', [])
     if port_uris:
         print(f"Port {port} is now publicly accessible")

@@ -1,18 +1,11 @@
-name: traefik-webui-proxy
-
-services:
-  traefik:
-    image: traefik:v3.7.13
-    container_name: traefik-proxy
-    ports:
-      - "8780:8780"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - type: bind
-        source: ${TRAEFIK_CONFIG_DIR:-/opt/devcontainers/hermes-webui/traefik}
-        target: /etc/traefik
-        read_only: true
-    command:
-      - "--configFile=/etc/traefik/traefik.yml"
-    restart: unless-stopped
+# This file is kept for reference but is NOT used by the post_start_command.
+# The post_start_command uses `docker run` with an image-baking approach:
+# it creates a temporary Traefik container, copies config files into it
+# via `docker exec` + base64, commits a new image
+# (`traefik:v3.7.13-hermes`), then runs the committed image.
+#
+# This approach is necessary because the Docker daemon (host VM) cannot
+# see files in the devcontainer container's filesystem, making volume
+# mounts from `/opt/devcontainers/` or `/workspaces/` unreliable.
+#
+# See CONTAINER_FILESYSTEM_STRUCTURE.md for full details.

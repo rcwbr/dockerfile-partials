@@ -45,7 +45,7 @@ Replaced `grep` parsing with `source /workspaces/.codespaces/shared/.env`.
 
 ### 6. Extract port publishing to Python — DONE
 
-Created `hermes-webui/scripts/ensure_port_public.py`. Handles full Tunnels API flow.
+Created `hermes-webui/scripts/finalize_port_public.py`. Handles full Tunnels API flow + /health polling.
 
 ### 7. Remove `hermes-webui/traefik/Dockerfile` — DONE (earlier)
 
@@ -61,7 +61,7 @@ the image.
 
 - \[x\] 1. Create branch
 - \[x\] 2. Simplify `.hermes-webui.env` (items 1, 5)
-- \[x\] 3. Create `ensure_port_public.py` (item 6)
+- [x] 3. Create `finalize_port_public.py` (item 6)
 - \[x\] 4. Rewrite `post_start_command` (items 3, 4, 6)
 - \[x\] 5. Fix `webui.yml` service names and priorities
 - \[x\] 6. Remove `forwardPorts` from `devcontainer.json` (item 3)

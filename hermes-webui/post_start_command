@@ -68,34 +68,9 @@ docker run -d --name traefik-proxy \
   "${_docker_image}" \
   --configFile=/etc/traefik/traefik.yml 2>/dev/null
 
-# --- Wait for the WebUI server to become fully ready ---
-echo "Waiting for Hermes Web UI to become ready..."
-HWEBUI_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
-HWEBUI_PORT="${HERMES_WEBUI_PORT:-8787}"
-_health_url="http://${HWEBUI_HOST}:${HWEBUI_PORT}/health"
-
-# Poll /health until it returns status == "ok"
-_ready=0
-_wait=0
-while [ "${_wait}" -lt 120 ]; do
-  _resp="$(curl -s --max-time 5 "${_health_url}" 2>/dev/null)" || true
-  if printf '%s' "${_resp}" | grep -q '"status".*"ok"'; then
-    _ready=1
-    break
-  fi
-  sleep 5
-  _wait=$((_wait + 5))
-done
-
-if [ "${_ready}" -ne 1 ]; then
-  echo "[error] Hermes Web UI did not become ready within 120 seconds" >&2
-  echo "[error] Last response: ${_resp:-<empty>}" >&2
-  exit 1
-fi
-
-echo "Hermes Web UI is ready"
-
-# --- Make port 8780 publicly accessible ---
-# Uses ensure_port_public.py which handles the full Tunnels Management API flow.
-echo "Making port 8780 public..."
-python3 /opt/devcontainers/hermes-webui/scripts/ensure_port_public.py 8780
+# --- Wait for readiness and make port public ---
+# Uses finalize_port_public.py which:
+# 1. Polls /health until the WebUI returns status == "ok" (max 120 seconds)
+# 2. Makes port 8780 publicly accessible via the Tunnels Management API
+echo "Waiting for readiness and making port 8780 public..."
+python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780
