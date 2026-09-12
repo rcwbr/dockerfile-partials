@@ -24,13 +24,11 @@ disown
 
 # --- Start Traefik reverse proxy (port 8780 -> 8787) ---
 # The Docker daemon runs on the Codespace host VM and cannot see files in the
-# devcontainer container's overlay filesystem at /opt/devcontainers/. Bind mounts
-# are resolved by the host VM's Docker daemon, which has a different filesystem
-# view. We cannot directly bind-mount config files from /opt/devcontainers/.
-#
-# Solution: write config files into a Docker named volume using base64 echo
-# (via a temporary container), then mount that volume into the Traefik container.
-# Named volumes are managed by Docker and persist across container restarts.
+# devcontainer container's overlay filesystem at /opt/devcontainers/. However,
+# Docker named volumes are managed by the host VM's Docker daemon and are
+# accessible to containers. We write config files into a named volume using
+# base64 echo (via a temporary container), then mount that volume into Traefik.
+# Named volumes persist across container restarts and survive Codespace re-starts.
 echo "Starting Traefik reverse proxy on port 8780..."
 
 _traefik_vol="traefik-config-data"
