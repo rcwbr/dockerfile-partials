@@ -22,7 +22,8 @@ fi
 # This is a lightweight Python background process — no Docker container.
 echo "Starting landing page server on port 8081..."
 _landing_dir="/opt/devcontainers/hermes-webui/traefik/static"
-python3 -m http.server 8081 --directory "${_landing_dir}" --bind 0.0.0.0 &
+nohup python3 -m http.server 8081 --directory "${_landing_dir}" --bind 0.0.0.0 >/dev/null 2>&1 &
+disown
 
 # --- Start Traefik reverse proxy (port 8780 -> 8787) ---
 # The proxy provides a landing page while the WebUI boots. Port 8780 is
