@@ -1,12 +1,17 @@
 http:
   routers:
     hermes-webui:
-      rule: "PathPrefix(`/`)"
+      rule: PathPrefix(`/`)
       service: hermes-webui-svc
       entryPoints:
         - "web"
       middlewares:
         - "webui-errors"
+    landing:
+      rule: PathPrefix(`/`)
+      service: landing
+      entryPoints:
+        - "web"
   middlewares:
     webui-errors:
       errors:
