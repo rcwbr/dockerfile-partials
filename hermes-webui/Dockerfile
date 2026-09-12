@@ -48,4 +48,5 @@ EOF
 
 COPY common/post_start_command /opt/devcontainers/post_start_command
 COPY hermes-webui/post_start_command /opt/devcontainers/post_start_commands/hermes-webui
+COPY hermes-webui/scripts /opt/devcontainers/hermes-webui/scripts
 COPY hermes-webui/traefik /opt/devcontainers/hermes-webui/traefik
