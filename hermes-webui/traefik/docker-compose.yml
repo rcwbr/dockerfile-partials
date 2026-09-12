@@ -1,0 +1,18 @@
+name: traefik-webui-proxy
+
+services:
+  traefik:
+    image: traefik:v3.7.13
+    container_name: traefik-proxy
+    ports:
+      - "8780:8780"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - type: bind
+        source: ${TRAEFIK_CONFIG_DIR:-/opt/devcontainers/hermes-webui/traefik}
+        target: /etc/traefik
+        read_only: true
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    restart: unless-stopped

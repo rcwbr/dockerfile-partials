@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -e
+
+# Instruction recommend sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+# Using a locked ref for stability
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/057f3ec67e65661d3c01b757ec5cad0a3718453e/tools/install.sh) --unattended"

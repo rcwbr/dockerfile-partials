@@ -1,0 +1,101 @@
+#!/bin/bash
+# Starts the webui server, Traefik reverse proxy, landing page server,
+# then makes port 8780 publicly accessible on Codespace start.
+# Port 8787 is the main WebUI port. Port 8780 runs Traefik which proxies
+# to 8787 and serves a landing page while the WebUI is still starting up.
+set -euo pipefail
+
+# Source the Hermes Web UI env file.
+# This file sources the shared Codespaces .env file and exports the needed vars.
+if [ -n "${HERMES_WEBUI_ENV_FILE:-}" ] && [ -f "${HERMES_WEBUI_ENV_FILE}" ]; then
+  # shellcheck disable=SC1090
+  source "${HERMES_WEBUI_ENV_FILE}"
+fi
+
+# --- Start Hermes Web UI ---
+/opt/devcontainers/hermes-webui/ctl.sh start
+
+# --- Start landing page server (Python http.server on port 8081) ---
+# Traefik proxies to this when the WebUI is not yet ready (502/503/504).
+echo "Starting landing page server on port 8081..."
+_landing_dir="/opt/devcontainers/hermes-webui/traefik/static"
+nohup python3 -m http.server 8081 --directory "${_landing_dir}" --bind 0.0.0.0 >/dev/null 2>&1 &
+disown
+
+# --- Start Traefik reverse proxy (port 8780 -> 8787) ---
+# The Docker daemon runs on the Codespace host VM and cannot see files in the
+# devcontainer container's overlay filesystem at /opt/devcontainers/. Bind mounts
+# from docker compose are resolved by the host VM's Docker daemon, which has a
+# different filesystem view.
+# Solution: bake the Traefik config files into a Docker image layer by creating
+# a temporary container, copying config files into its filesystem, committing it
+# as a new image, then running the committed image. No volume mounts needed.
+echo "Starting Traefik reverse proxy on port 8780..."
+
+# Build a Traefik image with config baked in
+_docker_image="traefik:v3.7.13-hermes"
+_docker_tmp_container="traefik-config-builder"
+
+# Check if the image already exists
+if ! docker image inspect "${_docker_image}" >/dev/null 2>&1; then
+  echo "Building Traefik image with config..."
+  docker rm -f "${_docker_tmp_container}" 2>/dev/null || true
+  docker run -d --name "${_docker_tmp_container}" \
+    --entrypoint sleep traefik:v3.7.13 999 2>/dev/null
+  sleep 1
+
+  # Create config directory and write config files using base64 encoding
+  docker exec "${_docker_tmp_container}" mkdir -p /etc/traefik/dynamic
+
+  _traefik_yml_b64="$(base64 -w0 /opt/devcontainers/hermes-webui/traefik/traefik.yml)"
+  _webui_yml_b64="$(base64 -w0 /opt/devcontainers/hermes-webui/traefik/dynamic/webui.yml)"
+
+  docker exec "${_docker_tmp_container}" sh -c "echo '${_traefik_yml_b64}' | base64 -d > /etc/traefik/traefik.yml"
+  docker exec "${_docker_tmp_container}" sh -c "echo '${_webui_yml_b64}' | base64 -d > /etc/traefik/dynamic/webui.yml"
+
+  # Commit the container as a new image with config baked in
+  docker commit "${_docker_tmp_container}" "${_docker_image}" >/dev/null
+  docker rm -f "${_docker_tmp_container}" >/dev/null 2>&1
+  echo "Image built successfully"
+fi
+
+# Use --force-recreate to handle stale containers from prior sessions
+docker rm -f traefik-proxy 2>/dev/null || true
+docker run -d --name traefik-proxy \
+  --entrypoint /entrypoint.sh \
+  --add-host=host.docker.internal:host-gateway \
+  -p 8780:8780 \
+  "${_docker_image}" \
+  --configFile=/etc/traefik/traefik.yml 2>/dev/null
+
+# --- Wait for the WebUI server to become fully ready ---
+echo "Waiting for Hermes Web UI to become ready..."
+HWEBUI_HOST="${HERMES_WEBUI_HOST:-127.0.0.1}"
+HWEBUI_PORT="${HERMES_WEBUI_PORT:-8787}"
+_health_url="http://${HWEBUI_HOST}:${HWEBUI_PORT}/health"
+
+# Poll /health until it returns status == "ok"
+_ready=0
+_wait=0
+while [ "${_wait}" -lt 120 ]; do
+  _resp="$(curl -s --max-time 5 "${_health_url}" 2>/dev/null)" || true
+  if printf '%s' "${_resp}" | grep -q '"status".*"ok"'; then
+    _ready=1
+    break
+  fi
+  sleep 5
+  _wait=$((_wait + 5))
+done
+
+if [ "${_ready}" -ne 1 ]; then
+  echo "[error] Hermes Web UI did not become ready within 120 seconds" >&2
+  echo "[error] Last response: ${_resp:-<empty>}" >&2
+  exit 1
+fi
+
+echo "Hermes Web UI is ready"
+
+# --- Make port 8780 publicly accessible ---
+# Uses ensure_port_public.py which handles the full Tunnels Management API flow.
+echo "Making port 8780 public..."
+python3 /opt/devcontainers/hermes-webui/scripts/ensure_port_public.py 8780

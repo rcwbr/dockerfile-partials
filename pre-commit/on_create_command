@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+docker pull "$DEVCONTAINER_PRE_COMMIT_IMAGE"
+pre-commit install

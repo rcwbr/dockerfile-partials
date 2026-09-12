@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -ex
+
+export DEVCONTAINER_IMAGE=dockerfile-partials-devcontainer
+export DEVCONTAINER_REGISTRY=ghcr.io/rcwbr
+export DEVCONTAINER_DEFINITION_TYPE=bake
+export DEVCONTAINER_INITIALIZE_PID=$PPID
+devcontainer_definition_files_arr=(
+  devcontainer-bake.hcl
+  docker-client/devcontainer-bake.hcl
+  gh/devcontainer-bake.hcl
+  zsh/devcontainer-bake.hcl
+  tmux/devcontainer-bake.hcl
+  hermes-webui/devcontainer-bake.hcl
+  useradd/devcontainer-bake.hcl
+  pre-commit/devcontainer-bake.hcl
+  .devcontainer/devcontainer-bake.hcl
+)
+DEVCONTAINER_DEFINITION_FILES="${devcontainer_definition_files_arr[*]}"
+export DEVCONTAINER_DEFINITION_FILES
+export DEVCONTAINER_BUILD_ADDITIONAL_ARGS="$*"
+curl https://raw.githubusercontent.com/rcwbr/devcontainer-cache-build/0.9.2/devcontainer-cache-build-initialize | bash
