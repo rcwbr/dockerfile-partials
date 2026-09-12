@@ -68,8 +68,8 @@ the image.
 - \[x\] 7. Restore `static/index.html`, remove `landing.html`
 - \[x\] 8. Remove sshd feature (item 2)
 - \[x\] 9. Use image-baking for Traefik config (no volume mounts)
-- \[x\] 10. Test — port 8780 public, `/health` returns `{"status":"ok"}`
-- \[x\] 11. Open bug issue #61: WebUI not reliably accessible on launch
+- [x] 10. Test — port 8780 public, `/health` returns `{"status":"ok"}` (via `test-sshd` Codespace)
+- [x] 11. Open bug issue #61
 
 ## Deviations
 
