@@ -4,4 +4,4 @@ set -e
 
 # Instruction recommend sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 # Using a locked ref for stability
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/057f3ec67e65661d3c01b757ec5cad0a3718453e/tools/install.sh) --unattended"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/76ac9fcddc4e93c15dc778b4c6234755ad714e5a/tools/install.sh) --unattended"
