@@ -14,9 +14,6 @@
       ]
     }
   },
-  "forwardPorts": [
-    8787
-  ],
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",
@@ -32,6 +29,7 @@
     }
   ],
   "name": "dockerfile-partials",
+  "onCreateCommand": "/opt/devcontainers/on_create_command",
   "postStartCommand": "/opt/devcontainers/post_start_command",
   "secrets": {
     "DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE": {

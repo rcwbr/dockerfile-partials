@@ -11,6 +11,7 @@ COPY --from=hermes_webui . $DEVCONTAINER_HERMES_WEBUI
 
 ENV HERMES_WEBUI_HOST=0.0.0.0
 ENV HERMES_WEBUI_PORT=8787
+ENV HERMES_AGENT_VERSION_TAG=v2026.9.7
 # Install Hermes Agent, bootstrap, then clean up — all in a single RUN layer
 # so removed files don't persist as Docker layers.
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
@@ -19,7 +20,7 @@ RUN --mount=type=bind,source=hermes-webui/cleanup-targets,target=/tmp/cleanup-ta
     --mount=type=bind,source=hermes-webui/scripts,target=/tmp/scripts \
     <<EOF
 # Install hermes-agent with minimal flags
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/v2026.8.3/scripts/install.sh | bash -s -- --no-skills --skip-browser --skip-setup --non-interactive
+curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_AGENT_VERSION_TAG}/scripts/install.sh | bash -s -- --no-skills --skip-browser --skip-setup --non-interactive
 
 # Install faster-whisper (voice/STT) into the agent venv so that local
 # speech-to-text is available without a lazy first-use install.
@@ -47,3 +48,5 @@ EOF
 
 COPY common/post_start_command /opt/devcontainers/post_start_command
 COPY hermes-webui/post_start_command /opt/devcontainers/post_start_commands/hermes-webui
+COPY hermes-webui/scripts /opt/devcontainers/hermes-webui/scripts
+COPY hermes-webui/traefik /opt/devcontainers/hermes-webui/traefik
