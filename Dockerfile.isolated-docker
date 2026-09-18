@@ -1,0 +1,10 @@
+FROM docker:dind-rootless
+
+# Install util-linux for real setpriv (Alpine's BusyBox setpriv lacks --reuid)
+RUN apk add --no-cache util-linux
+
+# Create runtime directory for the rootless user
+RUN mkdir -p /run/user && chmod 1777 /run/user
+
+# Override entrypoint to run rootless daemon as the rootless user (UID 1000)
+ENTRYPOINT ["setpriv", "--reuid", "1000", "--regid", "1000", "--clear-groups", "/usr/local/bin/dockerd-rootless.sh"]

@@ -61,9 +61,29 @@ docker run -d --name traefik-proxy \
   "${_traefik_image}" \
   --configFile=/etc/traefik/traefik.yml 2>/dev/null
 
+# --- Wait for Traefik to be ready before proceeding ---
+# Traefik starts asynchronously and its dynamic config (health checks,
+# middleware, routing rules) takes a few seconds to load. Without this wait,
+# finalize_port_public.py may register port 8780 as public before Traefik
+# is actually proxying, causing the user to see 502/503/404 errors.
+echo "Waiting for Traefik to be ready..."
+_traefik_ready=0
+for _i in $(seq 1 30); do
+  if curl -sf http://127.0.0.1:8780/health >/dev/null 2>&1; then
+    echo "Traefik is ready (after ${_i} attempt(s))"
+    _traefik_ready=1
+    break
+  fi
+  echo "Waiting for Traefik... (attempt ${_i}/30)"
+  sleep 2
+done
+if [ "${_traefik_ready}" -ne 1 ]; then
+  echo "[warn] Traefik did not become ready within 60s — continuing anyway" >&2
+fi
+
 # --- Wait for readiness and make port public ---
 # Uses finalize_port_public.py which:
 # 1. Polls /health until the WebUI returns status == "ok" (max 120 seconds)
 # 2. Makes port 8780 publicly accessible via the Tunnels Management API
-echo "Waiting for readiness and making port 8780 public..."
+echo "Waiting for WebUI health and making port 8780 public..."
 python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780
