@@ -94,41 +94,77 @@ If the user opens the URL between T+1 and T+5, they may hit:
 - 8787 direct: 404 (WebUI still booting, no routes available)
 - 8780 via Traefik: landing page or 404 (Traefik middleware not fully configured)
 
-## Fix 2: Wait for Traefik Readiness
+## Root Cause: Codespaces Auto-Detects Port 8787
 
-To make the port forwarding more robust, we added a Traefik readiness wait loop in the
-`post_start_command` script. This ensures Traefik is fully operational before
-`finalize_port_public.py` attempts to mark port 8780 as public.
+Through live testing on a rebuilt Codespace, we discovered that the 404 is NOT
+primarily from Traefik being unready — it's from the **Codespaces tunnel proxy**
+returning 404 for port 8787 (the WebUI direct port).
 
-The fix adds a polling loop after Traefik starts that:
+### What happens:
 
-1. Checks `http://127.0.0.1:8780/health` up to 30 times (60 seconds total)
-1. Blocks further script execution until Traefik responds successfully
-1. Logs progress so it's visible in the Codespace startup output
+1. Codespaces auto-detects port 8787 (WebUI listening) and registers it as **private**
+2. Codespaces also detects port 8780 (Traefik Docker published port) and registers it
+3. The Codespace UI may auto-open port 8787 (private) when the user clicks "Open in Browser"
+4. The Codespaces tunnel proxy for **private ports** intercepts certain request paths
+   and serves its own response — for paths like `/health`, `/api/`, `/static/`, it returns
+   the same HTML page (5068 bytes). This is the Codespace tunnel's auth interception, not
+   the WebUI itself.
+5. When the tunnel proxy can't route properly (e.g., during startup, or for paths it
+   doesn't expect), it returns **404 with an empty body** from
+   `X-Served-By: tunnels-prod-rel-usw3-v3-cluster`
 
-This eliminates the race between Traefik being started (Docker container up) and Traefik being ready
-to proxy requests (dynamic config loaded, health checks passing).
+### Evidence from testing:
 
-## Other Mitigation Strategies
+```
+Port 8780 (public - Traefik):
+  /: 200 (len=2675) - Hermes login page ✓
+  /health: 200 (len=285) - JSON health response ✓
+  /api/: HTTP 401 - proper auth challenge ✓
 
-### 1. Add `forwardPorts` to devcontainer.json
+Port 8787 (private - WebUI direct):
+  /: 200 (len=5068) - Codespace tunnel auth page ✗
+  /health: 200 (len=5068) - Codespace tunnel auth page ✗
+  /api/: 200 (len=5068) - Codespace tunnel auth page ✗
+```
 
-Declaring ports explicitly in devcontainer.json bypasses auto-detection:
+The 5068-byte responses on port 8787 are from the Codespace tunnel proxy's
+authentication layer, not from the Hermes WebUI. The tunnel proxy sits between
+the user and the private port, and returns 404 when it can't route the request.
+
+## Fix 1: Add `forwardPorts` to devcontainer.json (Primary Fix)
+
+Adding `forwardPorts: [8780]` to `.devcontainer/devcontainer.json` tells Codespaces
+to **only** auto-forward port 8780 (Traefik). Port 8787 is no longer auto-detected
+or registered, eliminating the competing private port entry that causes 404s.
 
 ```json
 {
-  "forwardPorts": [
-    8780,
-    8787
-  ]
+  "forwardPorts": [8780],
+  ...
 }
 ```
 
-This ensures both ports are registered at container creation time, not discovered later by the
-agent. However, auto-detected ports are still private by default; visibility must be changed via
-`gh CLI` or the Tunnels API.
+This is the most impactful single fix — it prevents the Codespace tunnel from
+creating a stale/broken entry for port 8787.
 
-### 2. Set Port Visibility Immediately
+## Applied Fixes
+
+### Fix 1: `forwardPorts: [8780]` in devcontainer.json (PRIMARY FIX)
+
+Added `forwardPorts: [8780]` to `.devcontainer/devcontainer.json`. This tells Codespaces
+to only auto-forward port 8780 (Traefik), preventing the auto-detection of port 8787
+(WebUI direct) which caused 404s through the tunnel proxy's auth interception layer.
+
+### Fix 2: Traefik readiness wait in post_start_command (Support Fix)
+
+Added a Traefik readiness polling loop in the `post_start_command` script that waits
+for `http://127.0.0.1:8780/health` to return successfully before calling
+`finalize_port_public.py`. This ensures Traefik is fully operational before
+port 8780 is marked as public, eliminating race conditions during startup.
+
+### Remaining Mitigation Strategies (Recommended)
+
+### 1. Set Port Visibility Immediately
 
 Call `gh codespace ports visibility 8780:public` immediately after Traefik starts, rather than
 waiting for the WebUI health check:
@@ -137,7 +173,7 @@ waiting for the WebUI health check:
 gh codespace ports visibility 8780:public --codespace "$CODESPACE_NAME" 2>/dev/null || true
 ```
 
-### 3. Increase Landing Page Refresh Interval
+### 2. Increase Landing Page Refresh Interval
 
 The landing page (`index.html`) auto-refreshes every 10 seconds. During startup flapping, this can
 cause rapid retry cycles. Increasing to 30 seconds reduces noise:
