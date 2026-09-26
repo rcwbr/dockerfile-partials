@@ -158,17 +158,22 @@ port 8780 is marked as public, eliminating race conditions during startup.
 
 ### Fix 3: Force Codespace tunnel port visibility refresh (CRITICAL)
 
-Added a visibility toggle loop (`8780:private` → `8780:public`) after
-`finalize_port_public.py` in the `post_start_command` script. This forces
-the Codespaces tunnel proxy to tear down and recreate the forwarding entry
-for port 8780, fixing the `ERR_INVALID_RESPONSE` / 404 that occurs when
-the tunnel proxy has a stale forwarding path after a codespace rebuild.
+Added a visibility toggle loop (private→public) inside
+`finalize_port_public.py` itself, replacing the bash inline toggle in
+`post_start_command`. This forces the Codespaces tunnel proxy to tear down
+and recreate the forwarding entry for port 8780, fixing the
+`ERR_INVALID_RESPONSE` / 404 that occurs when the tunnel proxy has a stale
+forwarding path after a codespace rebuild.
 
 The `finalize_port_public.py` script registers the port via the VS Code
-Tunnels API (which returns success even when the tunnel proxy has a broken
-entry). The visibility toggle goes through the Codespaces management API,
-which actually re-establishes the tunnel proxy's connection to the
-Docker-published port.
+Tunnels Management API (which returns success even when the tunnel proxy
+has a broken entry). The visibility toggle then goes through the same
+Tunnels API to update access control entries, which physically re-establishes
+the tunnel proxy's connection to the Docker-published port.
+
+The entire register+toggle+verify cycle is retried for up to 5 minutes,
+ensuring the endpoint becomes accessible even when the initial tunnel
+proxy entry is stale.
 
 ### Remaining Mitigation Strategies (Recommended)
 
@@ -233,6 +238,39 @@ Before toggle: HTTP 404 (from tunnels-prod-rel-usw3-v3-cluster)
 After toggle: HTTP 200, status=ok
 Stability: 5/5 requests successful
 ```
+
+### Retry Loop Test (test-retry-loop-qp6vjqpp9v936wvr)
+
+Created a fresh codespace with the retry loop logic in `finalize_port_public.py`:
+- No `forwardPorts` in devcontainer.json
+- Traefik readiness wait in post_start_command
+- 5-minute retry loop with `finalize_port_public.py` that re-registers port
+  and toggles visibility (private→public) until the endpoint responds
+
+Results:
+```
+Initial state (T+10s): Port 8780 registered as public, but public URL returned 000
+  (connection failure — tunnel proxy had stale forwarding entry)
+
+After retry loop completed (T+~5min): Port 8780 still public
+
+Stability test (10 requests, 1s apart):
+  All 10 requests: HTTP 200, status=ok
+  0 failures
+```
+
+The retry loop successfully detected the stale tunnel entry and forced a refresh
+by re-registering the port via the Tunnels API and toggling visibility. The endpoint
+became accessible after the tunnel proxy recreated its forwarding path.
+
+### Key Findings from API Investigation
+
+The `gh codespace ports visibility` command uses the **VS Code Tunnels Management API**
+(`tunnels.api.visualstudio.com`), not the GitHub REST API. The visibility toggle works
+by updating access control entries on the port via `PUT /api/v1/tunnels/{tunnelId}/ports/{port}`,
+which forces the tunnel proxy to tear down and recreate its forwarding path. This is
+why the visibility toggle is essential — it doesn't just change a metadata field, it
+physically re-establishes the tunnel proxy's connection to the published port.
 
 ## Reference
 

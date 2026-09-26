@@ -7,7 +7,7 @@ set -euo pipefail
 VM_NAME="container-workspace-utm-vm"
 CONTAINER_WORKSPACE_DIR="/Users/ericweber/Desktop/Eric/Projects/container-workspace"
 IMAGE_PATH="${CONTAINER_WORKSPACE_DIR}/utm-vm/ubuntu-26.04-server-cloudimg-arm64.img"
-GUEST_MOUNT_PATH="/mnt/container-workspace"
+GUEST_MOUNT_PATH="/mnt/shared"
 HOST_SHARE_PATH="${CONTAINER_WORKSPACE_DIR}"
 
 VM_MEMORY_GB=16
@@ -44,6 +44,9 @@ mkdir -p "$CLOUD_INIT_DIR"
 HOME_DIR="${VM_ROOT}/home"
 mkdir -p "$HOME_DIR"
 
+# --- Cloud-init user-data configuration ---
+# Fixed: Use write_files for fstab content with proper YAML formatting
+# and runcmd with explicit mkdir + mount to avoid systemd dependencies
 cat > "${CLOUD_INIT_DIR}/user-data" << 'USERDATA_END'
 #cloud-config
 hostname: container-workspace-vm
@@ -72,16 +75,20 @@ write_files:
   - path: /etc/fstab
     content: |
         share           /mnt/shared   9p    trans=virtio,version=9p2000.L,rw,_netdev,nofail,auto   0  0
-        /mnt/shared/utm-vm/container-workspace-utm-vm/home  /home/ubuntu   none  bind,_netdev,nofail,auto   0  0
-        /mnt/shared/workspace  /home/ubuntu/workspace  none  bind,_netdev,nofail,auto   0  0
+        /mnt/shared/utm-vm/container-workspace-utm-vm/home   /home/ubuntu   none  bind,_netdev,nofail,auto   0  0
+        /mnt/shared/workspace            /home/ubuntu/workspace  none  bind,_netdev,nofail,auto   0  0
     permissions: '0644'
 runcmd:
   - systemctl enable --now qemu-guest-agent
   - systemctl enable --now docker
   - [cloud-init-per once, growpart, /usr/bin/growpart, /dev/vda, 1]
   - [cloud-init-per once, resize2fs, /dev/vda1]
-  - mkdir -p /mnt/shared /home/ubuntu/workspace
-  - mount -a 2>/dev/null || true
+  - mkdir -p /mnt/shared /home/ubuntu /home/ubuntu/workspace
+  - mount /mnt/shared 2>/dev/null || true
+  - sleep 2
+  - mkdir -p /mnt/shared /home/ubuntu /home/ubuntu/workspace
+  - mount --bind /mnt/shared/workspace /home/ubuntu/workspace 2>/dev/null || true
+  - if [ -d /mnt/shared/utm-vm/container-workspace-utm-vm/home ]; then mount --bind /mnt/shared/utm-vm/container-workspace-utm-vm/home /home/ubuntu 2>/dev/null || true; fi
   - echo "=== CLOUD-INIT COMPLETE ===" > /home/ubuntu/setup-complete.txt
   - echo "Timestamp: $(date)" >> /home/ubuntu/setup-complete.txt
   - ip addr show > /home/ubuntu/network-info.txt 2>&1
@@ -177,40 +184,6 @@ echo "Configuring VM..."
     /usr/libexec/PlistBuddy -c "Add :Drive:1:Interface string SCSI" "$CONFIG_PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Set :Drive:1:ImageType CD" "$CONFIG_PLIST" 2>/dev/null || true
 
-
-# --- Shared directory configuration via QEMU AdditionalArguments ---
-# UTM QEMU is sandboxed — host directories copied into VM bundle's Data/ directory
-# QEMU:AdditionalArguments injects -fsdev/-device virtio-9p-pci for VirtFS shares
-
-# --- Copy host directories into VM bundle's sandbox (UTM QEMU can't access paths outside Data/) ---
-echo "Copying shared directories into VM bundle sandbox..."
-SANDBOX_SHARED_DIR="${VM_BUNDLE_DIR}/Data/shared-root"
-SANDBOX_HOME_DIR="${VM_BUNDLE_DIR}/Data/shared-home"
-rm -rf "$SANDBOX_SHARED_DIR" "$SANDBOX_HOME_DIR"
-cp -R "$HOST_SHARE_PATH" "$SANDBOX_SHARED_DIR" 2>/dev/null || true
-cp -R "${VM_ROOT}/home" "$SANDBOX_HOME_DIR" 2>/dev/null || true
-chown -R $(id -u):$(id -g) "$SANDBOX_SHARED_DIR" "$SANDBOX_HOME_DIR" 2>/dev/null || true
-
-# --- Inject QEMU VirtFS share arguments ---
-echo "Injecting QEMU VirtFS share arguments..."
-/usr/libexec/PlistBuddy -c "Delete :QEMU:AdditionalArguments" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU dict" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments array" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:0 string -fsdev" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:1 string local,id=fsdev0,path=${SANDBOX_HOME_DIR},security_model=mapped-xattr" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:2 string -device" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:3 string virtio-9p-pci,fsdev=fsdev0,mount_tag=home" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:4 string -fsdev" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:5 string local,id=fsdev1,path=${SANDBOX_SHARED_DIR},security_model=mapped-xattr" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:6 string -device" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :QEMU:AdditionalArguments:7 string virtio-9p-pci,fsdev=fsdev1,mount_tag=share" "$CONFIG_PLIST" 2>/dev/null || true
-
-# Tell UTM to use VirtFS mode for directory sharing
-/usr/libexec/PlistBuddy -c "Delete :Sharing" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :Sharing dict" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :Sharing:DirectoryShareMode string VirtFS" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :Sharing:DirectoryShareReadOnly bool false" "$CONFIG_PLIST" 2>/dev/null || true
-
 # --- Symlink ---
 WORKSPACE_UTM_DIR="${VM_ROOT}/utm"
 rm -f "$WORKSPACE_UTM_DIR"
@@ -287,12 +260,10 @@ for i in {1..60}; do
         sleep 5
         continue
     fi
-    echo "DEBUG: SSH key=$SSH_KEY_FILE, IP=$VM_IP"
     set +e
     SSH_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "ubuntu@${VM_IP}" "exit" 2>&1)
     SSH_RC=$?
     set -e
-    echo "DEBUG: SSH exit=$SSH_RC output=$SSH_OUTPUT"
     if [ $SSH_RC -eq 0 ]; then
         echo "✅ SSH ready at $VM_IP"
         echo "Checking cloud-init status..."
