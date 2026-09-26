@@ -38,7 +38,7 @@ def get_env_value(key: str) -> str | None:
 
 
 def wait_for_webui_health(host: str = '127.0.0.1', port: int = 8787, timeout: int = 120) -> bool:
-    """Poll /health until it returns status == 'ok' or timeout expires."""
+    """Poll /health until it returns status == "ok" or timeout expires."""
     health_url = f'http://{host}:{port}/health'
     print(f'Waiting for Hermes Web UI at {health_url}...')
     deadline = time.time() + timeout
@@ -104,6 +104,29 @@ def gh_api(endpoint: str, token: str, method: str = 'GET', data: dict | None = N
         raise
 
 
+def get_codespace_tunnel_props(codespace_name: str, token: str) -> dict:
+    """Get tunnel connection properties (tunnelId, serviceUri, managePortsAccessToken)
+    for the given codespace via the GitHub Codespaces REST API.
+    """
+    repo = os.environ.get('GITHUB_REPOSITORY', '')
+    if repo:
+        cs_endpoint = f'/repos/{repo}/codespaces/{codespace_name}?internal=true&refresh=true'
+    else:
+        cs_endpoint = f'/user/codespaces/{codespace_name}?internal=true&refresh=true'
+    cs_info = gh_api(cs_endpoint, token)
+    tunnel_props = cs_info.get('connection', {}).get('tunnelProperties', {})
+    tunnel_id = tunnel_props.get('tunnelId', '')
+    tunnel_token = tunnel_props.get('managePortsAccessToken', '')
+    service_uri = tunnel_props.get('serviceUri', '')
+    if not tunnel_id or not tunnel_token or not service_uri:
+        raise ValueError('Missing tunnel connection properties')
+    return {
+        'tunnel_id': tunnel_id,
+        'tunnel_token': tunnel_token,
+        'service_uri': service_uri,
+    }
+
+
 def tunnels_api_put(service_uri: str, tunnel_id: str, token: str, port: int) -> dict:
     """Create/register a port on the Codespace's VS Code Tunnel."""
     url = f'{service_uri}tunnels/{tunnel_id}/ports/{port}?api-version=2023-09-27-preview'
@@ -140,44 +163,136 @@ def tunnels_api_put(service_uri: str, tunnel_id: str, token: str, port: int) -> 
         return {'error': str(e)}
 
 
-def set_port_visibility(codespace_name: str, port: int, visibility: str, token: str) -> bool:
-    """Set port visibility via the Codespaces REST API.
+def tunnels_api_get_port(service_uri: str, tunnel_id: str, token: str, port: int) -> dict:
+    """Get existing port info from the Tunnels API."""
+    url = f'{service_uri}tunnels/{tunnel_id}/ports/{port}?api-version=2023-09-27-preview'
+    req = urllib.request.Request(
+        url,
+        headers={'Authorization': f'Tunnel {token}'},
+        method='GET',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f'[warn] Could not GET existing port info: {e}', file=sys.stderr)
+        return {}
 
-    Uses PATCH /repos/{owner}/{repo}/codespaces/{codespace}/ports/{port}
-    to force the Codespace tunnel proxy to refresh its forwarding entry.
+
+def tunnels_api_set_visibility(service_uri: str, tunnel_id: str, token: str, port: int,
+                                visibility: str) -> bool:
+    """Set port visibility via the VS Code Tunnels Management API directly.
+
+    This replicates what 'gh codespace ports visibility' does internally.
+    The Tunnels API controls the access control entries on the port, which
+    forces the tunnel proxy to tear down and recreate its forwarding path.
     This fixes stale tunnel entries that return 404 despite showing as public.
+
+    Args:
+        service_uri: The tunnel service URI from codespace connection tunnelProperties
+        tunnel_id: The tunnel ID from codespace connection tunnelProperties
+        token: The managePortsAccessToken from codespace connection tunnelProperties
+        port: The port number to update
+        visibility: 'public', 'private', or 'org'
+
+    Returns True if the API PUT succeeded, False otherwise.
     """
-    # Try repo-scoped endpoint first (preferred)
-    repo = os.environ.get('GITHUB_REPOSITORY', '')
-    if repo:
-        endpoint = f'/repos/{repo}/codespaces/{codespace_name}/ports/{port}'
+    # Get the current port info to preserve protocol/labels
+    port_info = tunnels_api_get_port(service_uri, tunnel_id, token, port)
+
+    # Build access control entries based on desired visibility
+    # Reference: https://github.com/microsoft/dev-tunnels/blob/main/docs/tunnelAccessControl.md
+    if visibility == 'public':
+        # Public = anyone with the link (Anonymous with connect scope)
+        access_control = {
+            'entries': [
+                {
+                    'type': 'Anonymous',
+                    'subjects': [],
+                    'scopes': ['connect'],
+                }
+            ]
+        }
+    elif visibility == 'private':
+        # Private = only the tunnel owner (Authenticated via GitHub auth)
+        access_control = {
+            'entries': [
+                {
+                    'type': 'Authenticated',
+                    'subjects': [],
+                    'scopes': ['connect'],
+                }
+            ]
+        }
+    elif visibility == 'org':
+        # Org = organization members
+        access_control = {
+            'entries': [
+                {
+                    'type': 'OrganizationalAccount',
+                    'subjects': [],
+                    'scopes': ['connect'],
+                }
+            ]
+        }
     else:
-        endpoint = f'/user/codespaces/{codespace_name}'
-        # For user-scoped, we need to get ports list and find the one to update
-        # Actually, the user/codespaces endpoint doesn't support per-port PATCH
-        # Fall back to the gh CLI approach via subprocess if REST API fails
-        pass
-
-    try:
-        gh_api(endpoint, token, method='PATCH', data={'visibility': visibility})
-        return True
-    except (urllib.error.HTTPError, urllib.error.URLError):
-        # REST API may not support port-level visibility management directly
-        # Fall back to gh CLI
-        pass
-
-    # Fall back: use gh CLI
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['gh', 'codespace', 'ports', 'visibility', f'{port}:{visibility}',
-             '--codespace', codespace_name],
-            capture_output=True, text=True, timeout=30,
-            env={**os.environ, 'GH_TOKEN': token},
-        )
-        return result.returncode == 0
-    except Exception:
+        print(f'[error] Unknown visibility: {visibility}', file=sys.stderr)
         return False
+
+    put_body = {
+        'portNumber': port,
+        'protocol': port_info.get('protocol', 'http'),
+        'labels': port_info.get('labels', []),
+        'accessControl': access_control,
+        'options': port_info.get('options', {
+            'isGloballyAvailable': visibility == 'public',
+        }),
+    }
+
+    put_url = f'{service_uri}tunnels/{tunnel_id}/ports/{port}?api-version=2023-09-27-preview'
+    req = urllib.request.Request(
+        put_url,
+        data=json.dumps(put_body).encode(),
+        headers={
+            'Authorization': f'Tunnel {token}',
+            'Content-Type': 'application/json',
+        },
+        method='PUT',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            print(f'Visibility set to {visibility} via Tunnels API (status: {resp.status})')
+            return True
+    except Exception as e:
+        print(f'[warn] Tunnels API visibility update to {visibility} failed: {e}',
+              file=sys.stderr)
+        return False
+
+
+def set_port_visibility(codespace_name: str, port: int, visibility: str, token: str) -> bool:
+    """Set port visibility via the Codespaces connection + Tunnels Management API.
+
+    Uses the codespace connection properties to get the tunnel service URI and
+    auth token, then calls the Tunnels API to update port visibility.
+
+    This fixes stale tunnel entries that return 404 despite showing as public
+    on codespace rebuilds, because toggling visibility forces the tunnel proxy
+    to tear down and recreate the forwarding path.
+    """
+    try:
+        tunnel_props = get_codespace_tunnel_props(codespace_name, token)
+    except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as e:
+        print(f'[warn] Could not retrieve Codespace connection for visibility toggle: {e}',
+              file=sys.stderr)
+        return False
+
+    return tunnels_api_set_visibility(
+        tunnel_props['service_uri'],
+        tunnel_props['tunnel_id'],
+        tunnel_props['tunnel_token'],
+        port,
+        visibility,
+    )
 
 
 def get_port_forwarding_url(codespace_name: str, port: int, token: str) -> str | None:
@@ -195,23 +310,8 @@ def get_port_forwarding_url(codespace_name: str, port: int, token: str) -> str |
     except Exception:
         pass
 
-    # Fall back: use gh CLI to get the URL
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['gh', 'codespace', 'ports', '--codespace', codespace_name, '--json', 'port,portForwardingUrl'],
-            capture_output=True, text=True, timeout=15,
-            env={**os.environ, 'GH_TOKEN': token},
-        )
-        if result.returncode == 0:
-            ports = json.loads(result.stdout)
-            for p in ports:
-                if p.get('port') == port:
-                    return p.get('portForwardingUrl')
-    except Exception:
-        pass
-
-    return None
+    # Construct URL from codespace name + port (standard pattern)
+    return f'https://{codespace_name}-{port}.app.github.dev'
 
 
 def verify_public_endpoint(url: str, timeout: int = 120) -> bool:
@@ -257,26 +357,20 @@ def main():
 
     # 4. Get Codespace tunnel properties
     print(f'Making port {port} public on Codespace: {codespace_name}')
-    repo = os.environ.get('GITHUB_REPOSITORY', '')
-    if repo:
-        cs_endpoint = f'/repos/{repo}/codespaces/{codespace_name}?internal=true&refresh=true'
-    else:
-        cs_endpoint = f'/user/codespaces/{codespace_name}?internal=true&refresh=true'
-
     try:
-        cs_info = gh_api(cs_endpoint, token)
-    except (urllib.error.HTTPError, urllib.error.URLError):
-        print('[error] Could not retrieve Codespace details — cannot set port visibility', file=sys.stderr)
+        tunnel_props = get_codespace_tunnel_props(codespace_name, token)
+    except (urllib.error.HTTPError, urllib.error.URLError) as e:
+        print('[error] Could not retrieve Codespace details — cannot set port visibility',
+              file=sys.stderr)
+        print(f'[error] {e}', file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f'[error] {e}', file=sys.stderr)
         sys.exit(1)
 
-    tunnel_props = cs_info.get('connection', {}).get('tunnelProperties', {})
-    tunnel_id = tunnel_props.get('tunnelId', '')
-    tunnel_token = tunnel_props.get('managePortsAccessToken', '')
-    service_uri = tunnel_props.get('serviceUri', '')
-
-    if not tunnel_id or not tunnel_token or not service_uri:
-        print('[error] Missing tunnel connection properties', file=sys.stderr)
-        sys.exit(1)
+    tunnel_id = tunnel_props['tunnel_id']
+    tunnel_token = tunnel_props['tunnel_token']
+    service_uri = tunnel_props['service_uri']
 
     # 5. Create port on the tunnel
     print(f'Registering port {port} via Tunnels Management API...')
@@ -297,7 +391,6 @@ def main():
     public_url = port_uris[0] if port_uris else None
 
     if not public_url:
-        # Try to get the URL from the Codespaces API
         public_url = get_port_forwarding_url(codespace_name, port, token)
 
     if public_url and verify_public_endpoint(public_url, timeout=120):
@@ -306,7 +399,11 @@ def main():
         sys.exit(0)
     elif public_url:
         print(f'[warn] Public URL is registered but not responding: {public_url}', file=sys.stderr)
-        print(f'[warn] Port {port} is registered as public but endpoint verification failed', file=sys.stderr)
+        print(f'[warn] Port {port} is registered as public but endpoint verification failed',
+              file=sys.stderr)
+        print(f'[warn] Try toggling visibility manually:')
+        print(f'  gh codespace ports visibility {port}:private --codespace {codespace_name}')
+        print(f'  gh codespace ports visibility {port}:public --codespace {codespace_name}')
         sys.exit(0)  # Still exit 0 — the port IS registered as public
     else:
         print(f'[error] Failed to create port {port} on the Codespace tunnel', file=sys.stderr)
