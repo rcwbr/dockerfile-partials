@@ -8,7 +8,8 @@ It:
   3. If in a Codespace: detects name, reads GitHub token, queries the Codespace
      details API for tunnel connection properties, creates the port on the VS Code
      Tunnel via PUT, refreshes tunnel visibility to fix stale entries, and verifies
-     the port is publicly accessible via HTTP polling.
+     the port is publicly accessible via HTTP polling. Retries the entire
+     register+toggle cycle for up to 5 minutes if the endpoint fails.
 
 Usage: finalize_port_public.py [PORT]
        Default PORT = 8780
@@ -333,6 +334,30 @@ def verify_public_endpoint(url: str, timeout: int = 120) -> bool:
     return False
 
 
+def finalize_port_public(public_url: str, codespace_name: str, port: int, token: str,
+                         tunnel_props: dict) -> bool:
+    """One iteration of port registration + visibility toggle + verification.
+
+    Returns True if the public endpoint is verified, False otherwise.
+    """
+    service_uri = tunnel_props['service_uri']
+    tunnel_id = tunnel_props['tunnel_id']
+    tunnel_token = tunnel_props['tunnel_token']
+
+    # 1. Re-register the port on the tunnel
+    print(f'Registering port {port} via Tunnels Management API...')
+    create_resp = tunnels_api_put(service_uri, tunnel_id, tunnel_token, port)
+
+    # 2. Toggle visibility (private→public) to force tunnel proxy to refresh
+    print('Toggling port visibility to force tunnel proxy refresh...')
+    set_port_visibility(codespace_name, port, 'private', token)
+    time.sleep(2)
+    set_port_visibility(codespace_name, port, 'public', token)
+
+    # 3. Verify the public endpoint is accessible
+    return verify_public_endpoint(public_url, timeout=30)
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8780
 
@@ -368,47 +393,43 @@ def main():
         print(f'[error] {e}', file=sys.stderr)
         sys.exit(1)
 
-    tunnel_id = tunnel_props['tunnel_id']
-    tunnel_token = tunnel_props['tunnel_token']
-    service_uri = tunnel_props['service_uri']
+    # 5. Determine public URL (constructed from standard pattern)
+    public_url = f'https://{codespace_name}-{port}.app.github.dev'
 
-    # 5. Create port on the tunnel
-    print(f'Registering port {port} via Tunnels Management API...')
-    create_resp = tunnels_api_put(service_uri, tunnel_id, tunnel_token, port)
-
-    # 6. Force visibility refresh to fix stale tunnel entries
+    # 6. Retry loop: re-register port + toggle visibility until endpoint works
     # On codespace rebuilds, the Codespaces tunnel proxy may retain a stale
-    # forwarding entry. The Tunnels API PUT returns success even if the tunnel
-    # proxy has a broken entry. Toggling visibility forces the tunnel proxy
-    # to tear down and recreate the forwarding path.
-    print('Refreshing Codespace tunnel port visibility...')
-    set_port_visibility(codespace_name, port, 'private', token)
-    time.sleep(2)
-    set_port_visibility(codespace_name, port, 'public', token)
+    # forwarding entry. Toggling visibility and re-registering forces the
+    # tunnel proxy to tear down and recreate its forwarding path.
+    # Timeout: 5 minutes (300 seconds), with ~25s per iteration
+    total_timeout = 300
+    print(f'Entering retry loop (timeout={total_timeout}s) to make {public_url} accessible...')
+    deadline = time.time() + total_timeout
 
-    # 7. Verify the public endpoint is accessible
-    port_uris = create_resp.get('portForwardingUris', [])
-    public_url = port_uris[0] if port_uris else None
+    while time.time() < deadline:
+        # Refresh tunnel props in case they rotate
+        try:
+            tunnel_props = get_codespace_tunnel_props(codespace_name, token)
+        except (urllib.error.HTTPError, urllib.error.URLError, ValueError):
+            pass  # Keep using cached props
 
-    if not public_url:
-        public_url = get_port_forwarding_url(codespace_name, port, token)
+        if finalize_port_public(public_url, codespace_name, port, token, tunnel_props):
+            print(f'Port {port} is now publicly accessible')
+            print(f'URL: {public_url}')
+            sys.exit(0)
 
-    if public_url and verify_public_endpoint(public_url, timeout=120):
-        print(f'Port {port} is now publicly accessible')
-        print(f'URL: {public_url}')
-        sys.exit(0)
-    elif public_url:
-        print(f'[warn] Public URL is registered but not responding: {public_url}', file=sys.stderr)
-        print(f'[warn] Port {port} is registered as public but endpoint verification failed',
-              file=sys.stderr)
-        print(f'[warn] Try toggling visibility manually:')
-        print(f'  gh codespace ports visibility {port}:private --codespace {codespace_name}')
-        print(f'  gh codespace ports visibility {port}:public --codespace {codespace_name}')
-        sys.exit(0)  # Still exit 0 — the port IS registered as public
-    else:
-        print(f'[error] Failed to create port {port} on the Codespace tunnel', file=sys.stderr)
-        print(f'[error] Tunnels API response: {json.dumps(create_resp)}', file=sys.stderr)
-        sys.exit(1)
+        remaining = int(deadline - time.time())
+        if remaining > 0:
+            print(f'Retry failed, retrying in 5s ({remaining}s remaining)...')
+            time.sleep(5)
+
+    # All retries exhausted
+    print(f'[error] Failed to make port {port} publicly accessible after {total_timeout}s',
+          file=sys.stderr)
+    print(f'[error] Last checked: {public_url}', file=sys.stderr)
+    print(f'[error] Try toggling visibility manually:', file=sys.stderr)
+    print(f'  gh codespace ports visibility {port}:private --codespace {codespace_name}')
+    print(f'  gh codespace ports visibility {port}:public --codespace {codespace_name}')
+    sys.exit(1)
 
 
 if __name__ == '__main__':

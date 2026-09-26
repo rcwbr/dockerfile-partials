@@ -87,5 +87,6 @@ fi
 # 2. Makes port 8780 publicly accessible via the Tunnels Management API
 # 3. Toggles port visibility (private→public) to fix stale Codespace tunnel entries
 # 4. Verifies the public endpoint returns HTTP 200
+# 5. Retries steps 2-4 for up to 5 minutes if the endpoint returns 404/ERR_INVALID_RESPONSE
 echo "Waiting for WebUI health and making port 8780 public..."
 python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780

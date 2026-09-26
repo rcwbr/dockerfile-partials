@@ -30,7 +30,7 @@ fi
 SSH_PUBLIC_KEY=$(cat "${SSH_KEY_FILE}.pub")
 
 # --- Password ---
-RANDOM_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/")
+RANDOM_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" || true)
 PASSWORD_HASH=$(openssl passwd -6 "$RANDOM_PASSWORD")
 PASSWORDS_FILE="${VM_ROOT}/.password"
 echo "$RANDOM_PASSWORD" > "$PASSWORDS_FILE" 2>/dev/null || echo "$RANDOM_PASSWORD"
@@ -68,18 +68,19 @@ users:
       - {{SSH_PUBLIC_KEY}}
     passwd: {{PASSWORD_HASH}}
 resize_rootfs: true
+write_files:
+  - path: /etc/fstab
+    content: |
+        share           /mnt/shared   9p    trans=virtio,version=9p2000.L,rw,_netdev,nofail,auto   0  0
+        /mnt/shared/utm-vm/container-workspace-utm-vm/home  /home/ubuntu   none  bind,_netdev,nofail,auto   0  0
+        /mnt/shared/workspace  /home/ubuntu/workspace  none  bind,_netdev,nofail,auto   0  0
+    permissions: '0644'
 runcmd:
   - systemctl enable --now qemu-guest-agent
   - systemctl enable --now docker
   - [cloud-init-per once, growpart, /usr/bin/growpart, /dev/vda, 1]
   - [cloud-init-per once, resize2fs, /dev/vda1]
   - mkdir -p /mnt/shared /home/ubuntu/workspace
-  - |
-    cat > /etc/fstab << 'FSTAB_EOF'
-share           /mnt/shared   9p    trans=virtio,version=9p2000.L,rw,_netdev,nofail,auto   0  0
-/mnt/shared/utm-vm/container-workspace-utm-vm/home  /home/ubuntu   none  bind,_netdev,nofail,auto   0  0
-/mnt/shared/workspace  /home/ubuntu/workspace  none  bind,_netdev,nofail,auto   0  0
-FSTAB_EOF
   - mount -a 2>/dev/null || true
   - echo "=== CLOUD-INIT COMPLETE ===" > /home/ubuntu/setup-complete.txt
   - echo "Timestamp: $(date)" >> /home/ubuntu/setup-complete.txt
@@ -226,9 +227,9 @@ echo "  Bundle: $VM_BUNDLE_DIR"
 echo "  Memory: ${VM_MEMORY_GB}GB | CPUs: ${VM_CPU_COUNT} | Disk: ${VM_DISK_SIZE_GB}GB"
 echo ""
 
-# --- Prompt for GUI disk resize ---
+# --- Prompt for GUI configuration ---
 echo "============================================="
-echo "📋 DISK SIZE CONFIGURATION REQUIRED"
+echo "📋 MANUAL GUI CONFIGURATION REQUIRED"
 echo "============================================="
 echo ""
 echo "The Ubuntu cloud image has a default virtual disk size of ~2.4GB."
@@ -242,9 +243,25 @@ echo "  5. Choose \"Resize\" and set the target size to ${VM_DISK_SIZE_GB} GB"
 echo "  6. Click \"Resize\", confirm the dialog, and click \"Save\""
 echo ""
 echo "============================================="
+echo "📋 VIRTFS SHARED FOLDER CONFIGURATION"
+echo "============================================="
+echo ""
+echo "Configure VirtFS shares for the container-workspace folder:"
+echo ""
+echo "  1. In the same VM Edit window, go to the \"Sharing\" tab"
+echo "  2. Set \"Directory Share Mode\" to \"VirtFS\""
+echo "  3. Add a new share with:"
+echo "     - Path: ${HOST_SHARE_PATH}"
+echo "     - ReadOnly: unchecked"
+echo "  4. Click \"Save\""
+echo ""
+echo "The cloud-init config will mount this share to /mnt/shared and"
+echo "bind-mount sub-paths to /home/ubuntu and /home/ubuntu/workspace."
+echo ""
+echo "============================================="
 echo ""
 
-read -r -p "Press ENTER after you have resized the disk and clicked 'Save' in UTM... "
+read -r -p "Press ENTER after you have resized the disk and configured VirtFS sharing, then clicked 'Save' in UTM... "
 echo ""
 echo "Starting VM..."
 "$UTMCTL" start "$VM_NAME"
