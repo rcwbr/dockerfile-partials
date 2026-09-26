@@ -162,6 +162,20 @@ for `http://127.0.0.1:8780/health` to return successfully before calling
 `finalize_port_public.py`. This ensures Traefik is fully operational before
 port 8780 is marked as public, eliminating race conditions during startup.
 
+### Fix 3: Force Codespace tunnel port visibility refresh (CRITICAL)
+
+Added a visibility toggle loop (`8780:private` → `8780:public`) after
+`finalize_port_public.py` in the `post_start_command` script. This forces
+the Codespaces tunnel proxy to tear down and recreate the forwarding entry
+for port 8780, fixing the `ERR_INVALID_RESPONSE` / 404 that occurs when
+the tunnel proxy has a stale forwarding path after a codespace rebuild.
+
+The `finalize_port_public.py` script registers the port via the VS Code
+Tunnels API (which returns success even when the tunnel proxy has a broken
+entry). The visibility toggle goes through the Codespaces management API,
+which actually re-establishes the tunnel proxy's connection to the
+Docker-published port.
+
 ### Remaining Mitigation Strategies (Recommended)
 
 ### 1. Set Port Visibility Immediately
