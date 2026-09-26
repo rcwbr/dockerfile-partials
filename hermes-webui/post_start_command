@@ -85,40 +85,7 @@ fi
 # Uses finalize_port_public.py which:
 # 1. Polls /health until the WebUI returns status == "ok" (max 120 seconds)
 # 2. Makes port 8780 publicly accessible via the Tunnels Management API
+# 3. Toggles port visibility (private→public) to fix stale Codespace tunnel entries
+# 4. Verifies the public endpoint returns HTTP 200
 echo "Waiting for WebUI health and making port 8780 public..."
 python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780
-
-# --- Force Codespace tunnel port visibility refresh --
-# On Codespace rebuilds or cold starts, the Codespaces tunnel proxy may have
-# a stale forwarding entry for port 8780. The finalize_port_public.py script
-# registers the port via the VS Code Tunnels API (which returns success even
-# if the tunnel proxy has a broken entry). Toggling visibility via the
-# Codespaces management API forces the tunnel proxy to tear down and
-# recreate the forwarding path, fixing the 404 that occurs when the tunnel
-# proxy can't route to the Docker-published port.
-if [ -n "${CODESPACE_NAME:-}" ] && command -v gh >/dev/null 2>&1; then
-  echo "Refreshing Codespace tunnel port visibility..."
-  gh codespace ports visibility 8780:private --codespace "${CODESPACE_NAME}" 2>/dev/null || true
-  gh codespace ports visibility 8780:public --codespace "${CODESPACE_NAME}" 2>/dev/null || true
-  echo "Codespace tunnel port visibility refreshed"
-fi
-
-# --- Verify the public endpoint is accessible ---
-# Poll the public Codespace URL to confirm the tunnel is properly forwarding
-_port_url=""
-if [ -n "${CODESPACE_NAME:-}" ] && command -v gh >/dev/null 2>&1; then
-  _port_url="$(gh codespace ports --codespace "${CODESPACE_NAME}" 2>/dev/null \
-    | grep '^8780' | awk '{print $3}')"
-fi
-if [ -n "${_port_url}" ]; then
-  echo "Verifying public endpoint: ${_port_url}/health"
-  for _i in $(seq 1 15); do
-    _http_code="$(curl -sf -o /dev/null -w '%{http_code}' "${_port_url}/health" 2>/dev/null || echo "000")"
-    if [ "${_http_code}" = "200" ]; then
-      echo "Public endpoint is accessible (HTTP 200)"
-      break
-    fi
-    echo "Waiting for public endpoint... (attempt ${_i}/15, HTTP ${_http_code})"
-    sleep 2
-  done
-fi

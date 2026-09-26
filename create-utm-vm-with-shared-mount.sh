@@ -73,6 +73,14 @@ runcmd:
   - systemctl enable --now docker
   - [cloud-init-per once, growpart, /usr/bin/growpart, /dev/vda, 1]
   - [cloud-init-per once, resize2fs, /dev/vda1]
+  - mkdir -p /mnt/shared /home/ubuntu/workspace
+  - |
+    cat > /etc/fstab << 'FSTAB_EOF'
+share           /mnt/shared   9p    trans=virtio,version=9p2000.L,rw,_netdev,nofail,auto   0  0
+/mnt/shared/utm-vm/container-workspace-utm-vm/home  /home/ubuntu   none  bind,_netdev,nofail,auto   0  0
+/mnt/shared/workspace  /home/ubuntu/workspace  none  bind,_netdev,nofail,auto   0  0
+FSTAB_EOF
+  - mount -a 2>/dev/null || true
   - echo "=== CLOUD-INIT COMPLETE ===" > /home/ubuntu/setup-complete.txt
   - echo "Timestamp: $(date)" >> /home/ubuntu/setup-complete.txt
   - ip addr show > /home/ubuntu/network-info.txt 2>&1
@@ -218,74 +226,6 @@ echo "  Bundle: $VM_BUNDLE_DIR"
 echo "  Memory: ${VM_MEMORY_GB}GB | CPUs: ${VM_CPU_COUNT} | Disk: ${VM_DISK_SIZE_GB}GB"
 echo ""
 
-# --- Mount helper script ---
-mkdir -p "${VM_ROOT}/.utm-shared"
-cat > "${VM_ROOT}/.utm-shared/mount-shared.sh" << 'MOUNTSCRIPT'
-#!/bin/bash
-# Mount VirtFS shared directories
-# Dynamically discovers mount tags from virtio devices
-# Tries 9p first (UTM uses virtio-9p-pci), then virtiofs as fallback
-MOUNT_POINT="/mnt/container-workspace"
-HOME_MOUNT="/home/ubuntu"
-sudo mkdir -p "$MOUNT_POINT" "$HOME_MOUNT"
-
-mount_virtiofs() {
-    local tag=$1 point=$2
-    if sudo mount -t virtiofs "$tag" "$point" 2>/dev/null; then
-        echo "Mounted virtiofs ($tag) at $point"
-        ls -la "$point"
-        return 0
-    fi
-    return 1
-}
-
-mount_9p() {
-    local tag=$1 point=$2
-    if sudo mount -t 9p "$tag" "$point" -o trans=virtio,version=9p2000.L 2>/dev/null; then
-        echo "Mounted 9p ($tag) at $point"
-        ls -la "$point"
-        return 0
-    fi
-    return 1
-}
-
-# Load kernel modules
-sudo modprobe 9p 2>/dev/null || true
-sudo modprobe 9pnet 2>/dev/null || true
-sudo modprobe 9pnet_virtio 2>/dev/null || true
-sudo modprobe virtio_fs 2>/dev/null || true
-
-# Discover available mount tags from virtio devices
-echo "=== Discovered virtio devices ==="
-for dev in /sys/bus/virtio/devices/*; do
-    tag=$(cat "$dev/mount_tag" 2>/dev/null || echo "")
-    if [ -n "$tag" ]; then
-        echo "  Tag: $tag"
-    fi
-done
-
-# Try all discovered tags — first match goes to workspace mount point
-FIRST_TAG=""
-for dev in /sys/bus/virtio/devices/*/mount_tag; do
-    tag=$(cat "$dev" 2>/dev/null || echo "")
-    if [ -n "$tag" ] && [ -z "$FIRST_TAG" ]; then
-        FIRST_TAG="$tag"
-    fi
-done
-
-# Try the first tag for workspace, "home" for /home/ubuntu
-if [ -n "$FIRST_TAG" ]; then
-    if ! mount_9p "$FIRST_TAG" "$MOUNT_POINT"; then
-        mount_virtiofs "$FIRST_TAG" "$MOUNT_POINT" || echo "Could not mount $MOUNT_POINT ($FIRST_TAG)"
-    fi
-fi
-# Try "home" tag for /home/ubuntu
-if ! mount_9p home "$HOME_MOUNT"; then
-    mount_virtiofs home "$HOME_MOUNT" || echo "Could not mount $HOME_MOUNT (home)"
-fi
-MOUNTSCRIPT
-chmod +x "${VM_ROOT}/.utm-shared/mount-shared.sh"
-
 # --- Prompt for GUI disk resize ---
 echo "============================================="
 echo "📋 DISK SIZE CONFIGURATION REQUIRED"
@@ -338,14 +278,6 @@ for i in {1..60}; do
     echo "DEBUG: SSH exit=$SSH_RC output=$SSH_OUTPUT"
     if [ $SSH_RC -eq 0 ]; then
         echo "✅ SSH ready at $VM_IP"
-        # Copy mount helper script into VM and execute it
-        scp -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" \
-            "${VM_ROOT}/.utm-shared/mount-shared.sh" \
-            "ubuntu@${VM_IP}:/home/ubuntu/mount-shared.sh" 2>/dev/null || true
-        ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" \
-            "ubuntu@${VM_IP}" \
-            "sudo bash /home/ubuntu/mount-shared.sh" 2>&1 || \
-            echo "⚠️  Mount failed (will mount manually later)"
         echo "Checking cloud-init status..."
         ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "ubuntu@${VM_IP}" \
             "cat /home/ubuntu/setup-complete.txt 2>/dev/null; tail -20 /var/log/cloud-init-output.log 2>/dev/null" 2>/dev/null || true

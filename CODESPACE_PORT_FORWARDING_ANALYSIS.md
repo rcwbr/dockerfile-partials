@@ -131,29 +131,23 @@ The 5068-byte responses on port 8787 are from the Codespace tunnel proxy's
 authentication layer, not from the Hermes WebUI. The tunnel proxy sits between
 the user and the private port, and returns 404 when it can't route the request.
 
-## Fix 1: Add `forwardPorts` to devcontainer.json (Primary Fix)
+## Fix 1: Remove `forwardPorts` — Use Auto-Detection + Runtime Registration (Primary Fix)
 
-Adding `forwardPorts: [8780]` to `.devcontainer/devcontainer.json` tells Codespaces
-to **only** auto-forward port 8780 (Traefik). Port 8787 is no longer auto-detected
-or registered, eliminating the competing private port entry that causes 404s.
+Initial attempt: adding `forwardPorts: [8780]` to `.devcontainer/devcontainer.json` to
+only auto-forward port 8780 (Traefik). However, testing revealed this causes the
+**exact same 404** from the Codespace tunnel proxy. When `forwardPorts` is set,
+Codespaces creates its own tunnel forwarding entry for port 8780, which conflicts
+with Docker's `-p 8780:8780` published port on the host VM (since the devcontainer
+uses `--network=host`). The tunnel entry exists (API shows "public") but the proxy
+returns `ERR_INVALID_RESPONSE` / 404 because it can't bind to the port.
 
-```json
-{
-  "forwardPorts": [8780],
-  ...
-}
-```
+**Solution**: Remove `forwardPorts` entirely. Let Codespaces auto-detect port 8780
+(Docker published port is visible in the host VM network namespace). Then use
+`finalize_port_public.py` (Tunnels API) + visibility toggle (`gh codespace ports
+visibility`) to make it public and fix stale tunnel entries.
 
-This is the most impactful single fix — it prevents the Codespace tunnel from
-creating a stale/broken entry for port 8787.
-
-## Applied Fixes
-
-### Fix 1: `forwardPorts: [8780]` in devcontainer.json (PRIMARY FIX)
-
-Added `forwardPorts: [8780]` to `.devcontainer/devcontainer.json`. This tells Codespaces
-to only auto-forward port 8780 (Traefik), preventing the auto-detection of port 8787
-(WebUI direct) which caused 404s through the tunnel proxy's auth interception layer.
+**The `devcontainer.json` should NOT have `forwardPorts`** when Docker published
+ports are used in a `--network=host` devcontainer.
 
 ### Fix 2: Traefik readiness wait in post_start_command (Support Fix)
 
@@ -211,6 +205,34 @@ To verify the fix:
    ```
 1. Verify port 8780 is registered and publicly accessible
 1. Verify no 404 errors on initial load
+
+## Test Results
+
+### Fresh Codespace Test (test-visibility-fix-7pw769ppv97cxpq)
+
+Created a brand-new codespace from the fix branch with:
+- No `forwardPorts` in devcontainer.json
+- Traefik readiness wait in post_start_command
+- Visibility toggle (private→public) after finalize
+
+Results:
+```
+Ports:
+  8780: public  https://test-visibility-fix-7pw769ppv97cxpq-8780.app.github.dev
+
+Stability test (10 requests, 3s apart):
+  All 10 requests: HTTP 200, status=ok
+  0 failures
+```
+
+### Rebuilt Codespace Test (animated-eureka-64wvqg44v6rcrw9w)
+
+After applying the visibility toggle to an existing rebuilt codespace:
+```
+Before toggle: HTTP 404 (from tunnels-prod-rel-usw3-v3-cluster)
+After toggle: HTTP 200, status=ok
+Stability: 5/5 requests successful
+```
 
 ## Reference
 
