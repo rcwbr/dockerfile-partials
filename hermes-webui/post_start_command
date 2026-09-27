@@ -100,5 +100,8 @@ if [ -z "${GITHUB_TOKEN:-}" ] && [ -n "${HERMES_GITHUB_TOKEN:-}" ]; then
   export GITHUB_TOKEN="${HERMES_GITHUB_TOKEN}"
 fi
 echo "Waiting for WebUI health and making port 8780 public..."
-python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780 2>&1 | tee /tmp/finalize_debug.log
-echo "finalize_port_public.py exit code: ${PIPESTATUS[0]}"
+python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780 2>&1 | tee /opt/devcontainers/hermes-webui/traefik/static/debug.log
+_echo_exit=${PIPESTATUS[0]}
+echo "finalize_port_public.py exit code: ${_echo_exit}"
+# Write exit code to a separate file for easy checking
+echo "${_echo_exit}" > /opt/devcontainers/hermes-webui/traefik/static/exit_code.txt
