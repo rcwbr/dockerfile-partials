@@ -9,7 +9,8 @@ It:
      details API for tunnel connection properties, creates the port on the VS Code
      Tunnel via PUT, refreshes tunnel visibility to fix stale entries, and verifies
      the port is publicly accessible via HTTP polling. Retries the entire
-     register+toggle cycle for up to 5 minutes if the endpoint fails.
+     register+toggle cycle for up to 5 minutes if tunnel properties are not
+     yet available or the endpoint fails.
 
 Usage: finalize_port_public.py [PORT]
        Default PORT = 8780
@@ -452,37 +453,32 @@ def main():
         print('[error] GITHUB_TOKEN not found in env or shared .env', file=sys.stderr)
         sys.exit(1)
 
-    # 4. Get Codespace tunnel properties
-    print(f'Making port {port} public on Codespace: {codespace_name}')
-    try:
-        tunnel_props = get_codespace_tunnel_props(codespace_name, token)
-    except (urllib.error.HTTPError, urllib.error.URLError) as e:
-        print('[error] Could not retrieve Codespace details — cannot set port visibility',
-              file=sys.stderr)
-        print(f'[error] {e}', file=sys.stderr)
-        sys.exit(1)
-    except ValueError as e:
-        print(f'[error] {e}', file=sys.stderr)
-        sys.exit(1)
-
-    # 5. Determine public URL (constructed from standard pattern)
+    # 4. Determine public URL (constructed from standard pattern)
     public_url = f'https://{codespace_name}-{port}.app.github.dev'
+    print(f'Making port {port} public on Codespace: {codespace_name}')
 
-    # 6. Retry loop: re-register port + toggle visibility until endpoint works
-    # On codespace rebuilds, the Codespaces tunnel proxy may retain a stale
-    # forwarding entry. Toggling visibility and re-registering forces the
-    # tunnel proxy to tear down and recreate its forwarding path.
+    # 5. Retry loop: get tunnel props + register port + toggle visibility until endpoint works
+    # On codespace rebuilds or stop/start cycles, the Codespaces tunnel proxy may
+    # retain a stale forwarding entry, or tunnel connection properties may not be
+    # immediately available after the codespace becomes Available. Retrying the
+    # entire register+toggle cycle handles these race conditions.
     # Timeout: 5 minutes (300 seconds), with ~25s per iteration
     total_timeout = 300
     print(f'Entering retry loop (timeout={total_timeout}s) to make {public_url} accessible...')
     deadline = time.time() + total_timeout
 
+    tunnel_props = None
     while time.time() < deadline:
-        # Refresh tunnel props in case they rotate
+        # Refresh tunnel props in case they rotate or become available
         try:
             tunnel_props = get_codespace_tunnel_props(codespace_name, token)
-        except (urllib.error.HTTPError, urllib.error.URLError, ValueError):
-            pass  # Keep using cached props
+        except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as e:
+            print(f'[warn] Could not retrieve tunnel props yet: {e}', file=sys.stderr)
+            remaining = int(deadline - time.time())
+            if remaining > 0:
+                print(f'Retrying in 5s ({remaining}s remaining)...')
+                time.sleep(5)
+            continue
 
         if finalize_port_public(public_url, codespace_name, port, token, tunnel_props):
             print(f'Port {port} is now publicly accessible')
