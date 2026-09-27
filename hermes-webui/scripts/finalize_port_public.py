@@ -320,6 +320,11 @@ def set_port_visibility(codespace_name: str, port: int, visibility: str, token: 
             capture_output=True, text=True, timeout=30,
             env={**os.environ, 'GH_TOKEN': token, 'GITHUB_TOKEN': token},
         )
+        print(f'  gh CLI exit code: {result.returncode}', file=sys.stderr)
+        if result.stdout:
+            print(f'  gh CLI stdout: {result.stdout.strip()[:200]}', file=sys.stderr)
+        if result.stderr:
+            print(f'  gh CLI stderr: {result.stderr.strip()[:300]}', file=sys.stderr)
         if result.returncode == 0:
             print(f'Visibility set to {visibility} via gh CLI')
             return True
