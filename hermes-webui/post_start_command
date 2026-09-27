@@ -88,5 +88,16 @@ fi
 # 3. Toggles port visibility (private→public) to fix stale Codespace tunnel entries
 # 4. Verifies the public endpoint returns HTTP 200
 # 5. Retries steps 2-4 for up to 5 minutes if the endpoint returns 404/ERR_INVALID_RESPONSE
+#
+# On codespace stop/start, the tunnel proxy's forwarding path can become stale.
+# The gh CLI visibility toggle (which finalize_port_public.py calls as fallback)
+# goes through the Codespace connection layer and properly signals the tunnel
+# proxy to re-establish its forwarding path. gh CLI needs GH_TOKEN set.
+if [ -z "${GH_TOKEN:-}" ] && [ -n "${HERMES_GITHUB_TOKEN:-}" ]; then
+  export GH_TOKEN="${HERMES_GITHUB_TOKEN}"
+fi
+if [ -z "${GITHUB_TOKEN:-}" ] && [ -n "${HERMES_GITHUB_TOKEN:-}" ]; then
+  export GITHUB_TOKEN="${HERMES_GITHUB_TOKEN}"
+fi
 echo "Waiting for WebUI health and making port 8780 public..."
 python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780
