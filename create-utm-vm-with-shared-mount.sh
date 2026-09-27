@@ -11,7 +11,7 @@ GUEST_MOUNT_PATH="/mnt/shared"
 
 VM_MEMORY_GB=16
 VM_CPU_COUNT=8
-VM_DISK_SIZE_GB=16
+VM_DISK_SIZE_GB=64
 VM_MEMORY_MIB=$((VM_MEMORY_GB * 1024))
 
 UTMCTL="/Applications/UTM.app/Contents/MacOS/utmctl"
@@ -30,6 +30,7 @@ SSH_PUBLIC_KEY=$(cat "${SSH_KEY_FILE}.pub")
 
 # --- Password ---
 RANDOM_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" || true)
+PASSWORD_HASH="$(openssl passwd -6 "${RANDOM_PASSWORD}")"
 PASSWORDS_FILE="${VM_ROOT}/.password"
 echo "$RANDOM_PASSWORD" > "$PASSWORDS_FILE" 2>/dev/null || echo "$RANDOM_PASSWORD"
 chmod 600 "$PASSWORDS_FILE" 2>/dev/null || true
@@ -43,8 +44,6 @@ mkdir -p "$CONFIG_DRIVE_DIR"
 # --- Home directory ---
 HOME_DIR="${VM_ROOT}/home"
 mkdir -p "$HOME_DIR/workspace"
-
-# --- Docker data directory (bind-mounted to /var/lib/docker in cloud-init) ---
 mkdir -p "${HOME_DIR}/.docker-data"
 
 # --- Cloud-init user-data configuration ---
@@ -71,23 +70,11 @@ packages:
 # Runs in the init stage (before groups/users), so ssh_authorized_keys
 # in the users section below persist on the shared host directory.
 mounts:
-  - [share, /mnt/shared, 9p, trans=virtio,version=9p2000.L,rw,_netdev,nofail,x-systemd.device-timeout=10s, 0, 0]
-  - [/mnt/shared, {{CONTAINER_WORKSPACE_DIR}}, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
-  - [/mnt/shared/utm-vm/container-workspace-utm-vm/home, /home/{{USER}}, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
-  - [/mnt/shared/workspace, /home/{{USER}}/workspace, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
+  - [share, /mnt/shared, 9p, "trans=virtio,version=9p2000.L,rw,_netdev,nofail,x-systemd.device-timeout=10s", "0", "0"]
+  - [/mnt/shared, {{CONTAINER_WORKSPACE_DIR}}, none, "bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s", "0", "0"]
+  - [/mnt/shared/utm-vm/{{VM_NAME}}/home, /home/{{USER}}, none, "bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s", "0", "0"]
+  - [/mnt/shared/workspace, /home/{{USER}}/workspace, none, "bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s", "0", "0"]
 
-write_files:
-  - path: /etc/docker/daemon.json
-    content: |
-      {
-        "data-root": "/home/{{USER}}/.docker-data",
-        "hosts": ["unix:///var/run/docker.sock", "tcp://127.0.0.1:2375"]
-      }
-  - path: /etc/systemd/system/docker.service.d/docker.conf
-    content: |
-      [Service]
-      ExecStart=
-      ExecStart=/usr/bin/dockerd --containerd=/run/containerd/containerd.sock
 
 # Pre-create docker group so users module can add {{USER}}
 groups:
@@ -98,26 +85,23 @@ users:
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     groups: docker
     shell: /bin/bash
+    passwd: {{PASSWORD_HASH}}
+
     lock_passwd: false
     ssh_authorized_keys:
       - {{SSH_PUBLIC_KEY}}
 
-# Password management via chpasswd (recommended approach — more portable
-# than hashed_passwd in the users module, handles distribution differences).
-chpasswd:
-  expire: false
-  users:
-    - name: {{USER}}
-      password: {{PASSWORD}}
 
 runcmd:
   - systemctl enable --now qemu-guest-agent
+  - chown -R {{USER}}:{{USER}} /home/{{USER}}
 final_message: "Cloud-init configuration complete for container-workspace-vm"
 USERDATA_END
 
+sed -i '' "s|{{VM_NAME}}|${VM_NAME}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{CONTAINER_WORKSPACE_DIR}}|${CONTAINER_WORKSPACE_DIR}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{SSH_PUBLIC_KEY}}|${SSH_PUBLIC_KEY}|g" "${CONFIG_DRIVE_DIR}/user-data"
-sed -i '' "s|{{PASSWORD}}|${RANDOM_PASSWORD}|g" "${CONFIG_DRIVE_DIR}/user-data"
+sed -i '' "s|{{PASSWORD_HASH}}|${PASSWORD_HASH}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{USER}}|${USER}|g" "${CONFIG_DRIVE_DIR}/user-data"
 
 cat > "${CONFIG_DRIVE_DIR}/meta-data" << EOF
@@ -302,11 +286,14 @@ echo "Shared directory: $CONTAINER_WORKSPACE_DIR -> $GUEST_MOUNT_PATH"
 echo ""
 echo "🔐 SSH key: $SSH_KEY_FILE"
 echo "🔐 Password: $RANDOM_PASSWORD (saved to $PASSWORDS_FILE)"
-if [ -n "$VM_IP" ]; then
-    echo "🔗 ssh -i \"${SSH_KEY_FILE}\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USER}@${VM_IP}"
-fi
-echo ""
-echo "📝 Commands:"
-echo "  Start VM:   $UTMCTL start \"$VM_NAME\""
-echo "  Exec cmd:   $UTMCTL exec \"$VM_NAME\" -- <command>"
-echo "  Get IP:     $UTMCTL ip-address \"$VM_NAME\""
+
+# Create "connect" script for easy SSH access
+CONNECT_SCRIPT="${VM_ROOT}/connect"
+cat > "$CONNECT_SCRIPT" << CONNECT_EOF
+#!/bin/bash
+# Connect to the UTM VM via SSH using the generated key pair
+ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USER}@${VM_IP}
+CONNECT_EOF
+chmod +x "$CONNECT_SCRIPT"
+
+echo "🔗 SSH: ${CONNECT_SCRIPT}"
