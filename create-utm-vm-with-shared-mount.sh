@@ -8,7 +8,6 @@ VM_NAME="container-workspace-utm-vm"
 CONTAINER_WORKSPACE_DIR="/Users/ericweber/Desktop/Eric/Projects/container-workspace"
 IMAGE_PATH="${CONTAINER_WORKSPACE_DIR}/utm-vm/ubuntu-26.04-server-cloudimg-arm64.img"
 GUEST_MOUNT_PATH="/mnt/shared"
-HOST_SHARE_PATH="${CONTAINER_WORKSPACE_DIR}"
 
 VM_MEMORY_GB=16
 VM_CPU_COUNT=8
@@ -45,6 +44,9 @@ mkdir -p "$CONFIG_DRIVE_DIR"
 HOME_DIR="${VM_ROOT}/home"
 mkdir -p "$HOME_DIR/workspace"
 
+# --- Docker data directory (bind-mounted to /var/lib/docker in cloud-init) ---
+mkdir -p "${HOME_DIR}/.docker-data"
+
 # --- Cloud-init user-data configuration ---
 # Uses #cloud-config (NoCloud datasource via cidata ISO) for first-boot
 # provisioning of the Ubuntu 26.04 cloud image.
@@ -66,16 +68,35 @@ packages:
   - cloud-guest-utils
 
 # mounts: 9p VirtFS share + bind mounts from shared directory.
-# Runs in the init stage, before users module — so ssh_authorized_keys
+# Runs in the init stage (before groups/users), so ssh_authorized_keys
 # in the users section below persist on the shared host directory.
 mounts:
   - [share, /mnt/shared, 9p, trans=virtio,version=9p2000.L,rw,_netdev,nofail,x-systemd.device-timeout=10s, 0, 0]
+  - [/mnt/shared, {{CONTAINER_WORKSPACE_DIR}}, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
   - [/mnt/shared/utm-vm/container-workspace-utm-vm/home, /home/{{USER}}, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
   - [/mnt/shared/workspace, /home/{{USER}}/workspace, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
+
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "data-root": "/home/{{USER}}/.docker-data",
+        "hosts": ["unix:///var/run/docker.sock", "tcp://127.0.0.1:2375"]
+      }
+  - path: /etc/systemd/system/docker.service.d/docker.conf
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/dockerd --containerd=/run/containerd/containerd.sock
+
+# Pre-create docker group so users module can add {{USER}}
+groups:
+  - docker
 
 users:
   - name: {{USER}}
     sudo: "ALL=(ALL) NOPASSWD:ALL"
+    groups: docker
     shell: /bin/bash
     lock_passwd: false
     ssh_authorized_keys:
@@ -91,11 +112,10 @@ chpasswd:
 
 runcmd:
   - systemctl enable --now qemu-guest-agent
-  - systemctl enable --now docker
-
 final_message: "Cloud-init configuration complete for container-workspace-vm"
 USERDATA_END
 
+sed -i '' "s|{{CONTAINER_WORKSPACE_DIR}}|${CONTAINER_WORKSPACE_DIR}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{SSH_PUBLIC_KEY}}|${SSH_PUBLIC_KEY}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{PASSWORD}}|${RANDOM_PASSWORD}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{USER}}|${USER}|g" "${CONFIG_DRIVE_DIR}/user-data"
@@ -221,7 +241,7 @@ echo ""
 echo "  1. In the same VM Edit window, go to the \"Sharing\" tab"
 echo "  2. Set \"Directory Share Mode\" to \"VirtFS\""
 echo "  3. Add a new share with:"
-echo "     - Path: ${HOST_SHARE_PATH}"
+echo "     - Path: ${CONTAINER_WORKSPACE_DIR}"
 echo "     - ReadOnly: unchecked"
 echo "  4. Click \"Save\""
 echo ""
@@ -278,7 +298,7 @@ echo "✅ VM setup complete!"
 echo "VM Name: $VM_NAME"
 echo "Bundle: $VM_BUNDLE_DIR"
 echo "Symlink: $WORKSPACE_UTM_DIR"
-echo "Shared directory: $HOST_SHARE_PATH -> $GUEST_MOUNT_PATH"
+echo "Shared directory: $CONTAINER_WORKSPACE_DIR -> $GUEST_MOUNT_PATH"
 echo ""
 echo "🔐 SSH key: $SSH_KEY_FILE"
 echo "🔐 Password: $RANDOM_PASSWORD (saved to $PASSWORDS_FILE)"
