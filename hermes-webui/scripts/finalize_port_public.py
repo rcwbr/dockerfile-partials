@@ -21,6 +21,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import subprocess
 
 ENV_FILE = '/workspaces/.codespaces/shared/.env'
 GITHUB_API = 'https://api.github.com'
@@ -271,29 +272,52 @@ def tunnels_api_set_visibility(service_uri: str, tunnel_id: str, token: str, por
 
 
 def set_port_visibility(codespace_name: str, port: int, visibility: str, token: str) -> bool:
-    """Set port visibility via the Codespaces connection + Tunnels Management API.
+    """Set port visibility on the Codespace tunnel.
 
-    Uses the codespace connection properties to get the tunnel service URI and
-    auth token, then calls the Tunnels API to update port visibility.
+    Tries the Tunnels API first (access control entries update). If the
+    endpoint still doesn't work after this, the caller's retry loop will
+    eventually run out of retries. On codespace restarts, the Tunnels API
+    PUT does NOT trigger the tunnel proxy to re-establish its forwarding
+    path — only `gh CLI` does that because it goes through the Codespace
+    connection layer.
 
-    This fixes stale tunnel entries that return 404 despite showing as public
-    on codespace rebuilds, because toggling visibility forces the tunnel proxy
-    to tear down and recreate the forwarding path.
+    This function tries the Tunnels API, then falls back to `gh CLI` if
+    available. The `gh CLI` fallback is the reliable method for fixing
+    stale tunnel entries on stopped/restarted codespaces.
     """
+    # Try the Tunnels API first
     try:
         tunnel_props = get_codespace_tunnel_props(codespace_name, token)
+        tunnels_api_set_visibility(
+            tunnel_props['service_uri'],
+            tunnel_props['tunnel_id'],
+            tunnel_props['tunnel_token'],
+            port,
+            visibility,
+        )
     except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as e:
-        print(f'[warn] Could not retrieve Codespace connection for visibility toggle: {e}',
-              file=sys.stderr)
-        return False
+        print(f'[warn] Tunnels API visibility toggle failed: {e}', file=sys.stderr)
 
-    return tunnels_api_set_visibility(
-        tunnel_props['service_uri'],
-        tunnel_props['tunnel_id'],
-        tunnel_props['tunnel_token'],
-        port,
-        visibility,
-    )
+    # Always also try gh CLI — it goes through the Codespace connection layer
+    # and sends a reconnect signal to the tunnel proxy, which is the only
+    # reliable way to fix stale forwarding entries on codespace restarts.
+    try:
+        result = subprocess.run(
+            ['gh', 'codespace', 'ports', 'visibility', f'{port}:{visibility}',
+             '--codespace', codespace_name],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, 'GH_TOKEN': token, 'GITHUB_TOKEN': token},
+        )
+        if result.returncode == 0:
+            print(f'Visibility set to {visibility} via gh CLI')
+            return True
+        else:
+            print(f'[warn] gh CLI visibility toggle failed: {result.stderr.strip()[:200]}',
+                  file=sys.stderr)
+            return False
+    except Exception as e:
+        print(f'[warn] gh CLI not available for visibility toggle: {e}', file=sys.stderr)
+        return False
 
 
 def get_port_forwarding_url(codespace_name: str, port: int, token: str) -> str | None:

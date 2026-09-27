@@ -25,7 +25,7 @@ SSH_KEY_FILE="${SSH_KEY_DIR}/id_ed25519"
 mkdir -p "$SSH_KEY_DIR"
 if [ ! -f "$SSH_KEY_FILE" ]; then
     echo "🔐 Generating SSH key pair..."
-    ssh-keygen -t ed25519 -f "$SSH_KEY_FILE" -N "" -C "ubuntu-cloud-vm"
+    ssh-keygen -t ed25519 -f "$SSH_KEY_FILE" -N "" -C "${VM_NAME}"
 fi
 SSH_PUBLIC_KEY=$(cat "${SSH_KEY_FILE}.pub")
 
@@ -38,16 +38,19 @@ chmod 600 "$PASSWORDS_FILE" 2>/dev/null || true
 
 # --- Cloud-init config drive ---
 CLOUD_INIT_DIR="${VM_ROOT}/cloud-init"
-mkdir -p "$CLOUD_INIT_DIR"
+CONFIG_DRIVE_DIR="${CLOUD_INIT_DIR}/cidata"
+rm -rf "$CONFIG_DRIVE_DIR"
+mkdir -p "$CONFIG_DRIVE_DIR"
 
 # --- Home directory ---
 HOME_DIR="${VM_ROOT}/home"
-mkdir -p "$HOME_DIR"
+mkdir -p "$HOME_DIR/.ssh"
+mkdir -p "$HOME_DIR/workspace"
 
 # --- Cloud-init user-data configuration ---
-# Fixed: Use write_files for fstab content with proper YAML formatting
+# Use write_files for fstab content with proper YAML formatting
 # and runcmd with explicit mkdir + mount to avoid systemd dependencies
-cat > "${CLOUD_INIT_DIR}/user-data" << 'USERDATA_END'
+cat > "${CONFIG_DRIVE_DIR}/user-data" << 'USERDATA_END'
 #cloud-config
 hostname: container-workspace-vm
 manage_etc_hosts: true
@@ -63,68 +66,54 @@ packages:
   - net-tools
   - cloud-guest-utils
 users:
-  - name: ubuntu
+  - name: {{USER}}
+    uid: {{UID}}
+    gid: {{GID}}
     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     shell: /bin/bash
     lock_passwd: false
-    ssh_authorized_keys:
-      - {{SSH_PUBLIC_KEY}}
     passwd: {{PASSWORD_HASH}}
 resize_rootfs: true
 write_files:
   - path: /etc/fstab
     content: |
         share           /mnt/shared   9p    trans=virtio,version=9p2000.L,rw,_netdev,nofail,auto   0  0
-        /mnt/shared/utm-vm/container-workspace-utm-vm/home   /home/ubuntu   none  bind,_netdev,nofail,auto   0  0
-        /mnt/shared/workspace            /home/ubuntu/workspace  none  bind,_netdev,nofail,auto   0  0
+        /mnt/shared/utm-vm/container-workspace-utm-vm/home   /home/{{USER}}   none  bind,_netdev,nofail,auto,x-systemd.requires=/mnt/shared 0  0
+        /mnt/shared/workspace   /home/{{USER}}/workspace  none  bind,_netdev,nofail,auto,x-systemd.requires=/mnt/shared 0  0
     permissions: '0644'
 runcmd:
   - systemctl enable --now qemu-guest-agent
   - systemctl enable --now docker
   - [cloud-init-per once, growpart, /usr/bin/growpart, /dev/vda, 1]
   - [cloud-init-per once, resize2fs, /dev/vda1]
-  - mkdir -p /mnt/shared /home/ubuntu /home/ubuntu/workspace
-  - mount /mnt/shared 2>/dev/null || true
-  - sleep 2
-  - mkdir -p /mnt/shared /home/ubuntu /home/ubuntu/workspace
-  - mount --bind /mnt/shared/workspace /home/ubuntu/workspace 2>/dev/null || true
-  - if [ -d /mnt/shared/utm-vm/container-workspace-utm-vm/home ]; then mount --bind /mnt/shared/utm-vm/container-workspace-utm-vm/home /home/ubuntu 2>/dev/null || true; fi
-  - echo "=== CLOUD-INIT COMPLETE ===" > /home/ubuntu/setup-complete.txt
-  - echo "Timestamp: $(date)" >> /home/ubuntu/setup-complete.txt
-  - ip addr show > /home/ubuntu/network-info.txt 2>&1
+  - mkdir -p /mnt/shared /home/{{USER}} /home/{{USER}}/workspace
+  - mount /mnt/shared 2>/dev/null || mount -t 9p -o trans=virtio,version=9p2000.L,rw share /mnt/shared
+  - mount /home/{{USER}} 2>/dev/null || mount --bind /mnt/shared/utm-vm/container-workspace-utm-vm/home /home/{{USER}}
+  - mount /home/{{USER}}/workspace 2>/dev/null || mount --bind /mnt/shared/workspace /home/{{USER}}/workspace
+  - echo "=== CLOUD-INIT COMPLETE ===" > /home/{{USER}}/setup-complete.txt
+  - echo "Timestamp: $(date)" >> /home/{{USER}}/setup-complete.txt
+  - ip addr show > /home/{{USER}}/network-info.txt 2>&1
 USERDATA_END
 
-sed -i '' "s|{{SSH_PUBLIC_KEY}}|${SSH_PUBLIC_KEY}|g" "${CLOUD_INIT_DIR}/user-data"
-sed -i '' "s|{{PASSWORD_HASH}}|${PASSWORD_HASH}|g" "${CLOUD_INIT_DIR}/user-data"
+sed -i '' "s|{{SSH_PUBLIC_KEY}}|${SSH_PUBLIC_KEY}|g" "${CONFIG_DRIVE_DIR}/user-data"
+sed -i '' "s|{{PASSWORD_HASH}}|${PASSWORD_HASH}|g" "${CONFIG_DRIVE_DIR}/user-data"
+sed -i '' "s|{{USER}}|${USER}|g" "${CONFIG_DRIVE_DIR}/user-data"
+sed -i '' "s|{{UID}}|$(id -u)|g" "${CONFIG_DRIVE_DIR}/user-data"
+sed -i '' "s|{{GID}}|$(id -g)|g" "${CONFIG_DRIVE_DIR}/user-data"
 
-cat > "${CLOUD_INIT_DIR}/meta-data" << EOF
+cat > "${CONFIG_DRIVE_DIR}/meta-data" << EOF
 instance-id: iid-${VM_NAME}
 local-hostname: container-workspace-vm
 EOF
-touch "${CLOUD_INIT_DIR}/network-data"
+touch "${CONFIG_DRIVE_DIR}/network-data"
 
 # Create config drive ISO with "cidata" volume label
 echo "📦 Creating config drive..."
-CONFIG_DRIVE_DIR="${CLOUD_INIT_DIR}/config-drive"
-rm -rf "$CONFIG_DRIVE_DIR"
-mkdir -p "$CONFIG_DRIVE_DIR"
-cp "${CLOUD_INIT_DIR}/user-data" "${CONFIG_DRIVE_DIR}/user-data"
-cp "${CLOUD_INIT_DIR}/meta-data" "${CONFIG_DRIVE_DIR}/meta-data"
-touch "${CONFIG_DRIVE_DIR}/network-data"
 
-CONFIG_DRIVE_ISO="${CLOUD_INIT_DIR}/config-drive.iso"
+CONFIG_DRIVE_ISO="${UTM_DOCS_DIR}/${VM_NAME}.iso"
 rm -f "$CONFIG_DRIVE_ISO"
-
 # hdiutil needs a directory named "cidata" so the ISO volume label is correct
-TEMP_CIDATA_DIR=$(mktemp -d)
-cp -R "${CONFIG_DRIVE_DIR}/"* "${TEMP_CIDATA_DIR}/"
-mv "${TEMP_CIDATA_DIR}/" "${TEMP_CIDATA_DIR}/cidata" 2>/dev/null || \
-    mkdir "${TEMP_CIDATA_DIR}/cidata" && cp -R "${CONFIG_DRIVE_DIR}/"* "${TEMP_CIDATA_DIR}/cidata/"
-hdiutil makehybrid -iso -joliet -o "$CONFIG_DRIVE_ISO" "${TEMP_CIDATA_DIR}/cidata" 2>&1
-rm -rf "$TEMP_CIDATA_DIR"
-
-CONFIG_DRIVE_SANDBOX="${UTM_DOCS_DIR}/${VM_NAME}.iso"
-cp "$CONFIG_DRIVE_ISO" "$CONFIG_DRIVE_SANDBOX"
+hdiutil makehybrid -iso -joliet -o "$CONFIG_DRIVE_ISO" "${CONFIG_DRIVE_DIR}" 2>&1
 
 # --- Cloud image into UTM sandbox ---
 if [[ "$IMAGE_PATH" != "$UTM_DOCS_DIR"* ]]; then
@@ -133,6 +122,15 @@ if [[ "$IMAGE_PATH" != "$UTM_DOCS_DIR"* ]]; then
     IMAGE_PATH="${UTM_DOCS_DIR}/$(basename "$IMAGE_PATH")"
 fi
 
+VM_BUNDLE_DIR="${UTM_DOCS_DIR}/${VM_NAME}.utm"
+
+# Pre-copy config drive ISO into VM bundle's Data directory so UTM can
+# reference it as a non-removable drive (ImageName = basename of source).
+# Pre-create the directory since the VM bundle doesn't exist yet.
+mkdir -p "$VM_BUNDLE_DIR/Data"
+CONFIG_DRIVE_IN_BUNDLE="$VM_BUNDLE_DIR/Data/config-drive.iso"
+cp "$CONFIG_DRIVE_ISO" "$CONFIG_DRIVE_IN_BUNDLE"
+
 # --- Clean up any existing VM ---
 "$UTMCTL" delete "$VM_NAME" 2>/dev/null || true
 pkill UTM 2>/dev/null || true
@@ -140,12 +138,17 @@ sleep 3
 open -a UTM
 sleep 3
 
-# --- Create VM via AppleScript ---
+# --- Create VM with both drives via single osascript command ---
+# Hard disk (non-removable) + CD-ROM config drive (non-removable, SCSI interface).
+# Non-removable drives get ImageName derived from source basename, so UTM will
+# set ImageName = ubuntu-26.04-server-cloudimg-arm64-2.qcow2 for the disk and
+# ImageName = config-drive.iso for the CD-ROM, matching the working PlistBuddy
+# approach. No removable:true so the drives are internal/non-removable.
 echo "Creating VM via AppleScript..."
 osascript -e 'tell application "UTM"' \
           -e "set img to POSIX file \"${IMAGE_PATH}\"" \
-          -e "set cfg to POSIX file \"${CONFIG_DRIVE_SANDBOX}\"" \
-          -e "make new virtual machine with properties {backend:qemu, configuration:{name:\"${VM_NAME}\", architecture:\"aarch64\", drives:{{source:img}, {removable:true, source:cfg}}, memory:${VM_MEMORY_MIB}, cpu cores:${VM_CPU_COUNT}, hypervisor:true, uefi:true}}" \
+          -e "set cfg to POSIX file \"${CONFIG_DRIVE_IN_BUNDLE}\"" \
+          -e "make new virtual machine with properties {backend:qemu, configuration:{name:\"${VM_NAME}\", architecture:\"aarch64\", drives:{{source:img}, {source:cfg, interface:SCSI}}, memory:${VM_MEMORY_MIB}, cpu cores:${VM_CPU_COUNT}, hypervisor:true, uefi:true}}" \
           -e 'end tell'
 
 echo "✅ VM created and registered"
@@ -156,33 +159,28 @@ if ! "$UTMCTL" list | grep -q "$VM_NAME"; then
     exit 1
 fi
 
-# --- Get VM bundle path ---
-VM_BUNDLE_DIR=""
-for dir in "${UTM_DOCS_DIR}/${VM_NAME}"*.utm; do
-    if [ -d "$dir" ]; then
-        VM_BUNDLE_DIR="$dir"
+# Wait for VM bundle and config.plist to be written to disk
+echo "Waiting for VM bundle to be written..."
+for i in $(seq 1 10); do
+    if [ -f "${VM_BUNDLE_DIR}/config.plist" ]; then
+        echo "✅ VM bundle written"
         break
     fi
+    echo "  Waiting for VM bundle ($i/10)..."
+    sleep 3
 done
 
-if [ -z "$VM_BUNDLE_DIR" ]; then
-    echo "Error: VM bundle directory not found"
+if [ ! -f "${VM_BUNDLE_DIR}/config.plist" ]; then
+    echo "❌ VM bundle not written after 30 seconds"
     exit 1
 fi
 
-# Copy config drive into VM bundle Data directory
-cp "$CONFIG_DRIVE_SANDBOX" "${VM_BUNDLE_DIR}/Data/config-drive.iso"
-
-# --- Fix config.plist ---
-CONFIG_PLIST="${VM_BUNDLE_DIR}/config.plist"
-echo "Configuring VM..."
-
-# Fix CD-ROM drive: set ImageName and interface to SCSI
-/usr/libexec/PlistBuddy -c "Set :Drive:1:ImageName config-drive.iso" "$CONFIG_PLIST" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Add :Drive:1:ImageName string config-drive.iso" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Set :Drive:1:Interface SCSI" "$CONFIG_PLIST" 2>/dev/null || \
-    /usr/libexec/PlistBuddy -c "Add :Drive:1:Interface string SCSI" "$CONFIG_PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Set :Drive:1:ImageType CD" "$CONFIG_PLIST" 2>/dev/null || true
+# Restart UTM so it re-reads config.plist from disk (UTM caches in memory)
+echo "Restarting UTM to apply configuration..."
+pkill -f UTM 2>/dev/null || true
+sleep 5
+open -a UTM
+sleep 15
 
 # --- Symlink ---
 WORKSPACE_UTM_DIR="${VM_ROOT}/utm"
@@ -229,7 +227,7 @@ echo "     - ReadOnly: unchecked"
 echo "  4. Click \"Save\""
 echo ""
 echo "The cloud-init config will mount this share to /mnt/shared and"
-echo "bind-mount sub-paths to /home/ubuntu and /home/ubuntu/workspace."
+echo "bind-mount sub-paths to /home/${USER} and /home/${USER}/workspace."
 echo ""
 echo "============================================="
 echo ""
@@ -260,19 +258,22 @@ for i in {1..60}; do
         sleep 5
         continue
     fi
+    cat "${SSH_KEY_FILE}.pub" > "$HOME_DIR/.ssh/authorized_keys"
+    sleep 5
     set +e
-    SSH_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "ubuntu@${VM_IP}" "exit" 2>&1)
+    "$UTMCTL" exec "${VM_NAME}" --cmd chmod 700 "/home/${USER}/.ssh"
+    "$UTMCTL" exec "${VM_NAME}" --cmd chmod 600 "/home/${USER}/.ssh/authorized_keys"
+    SSH_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "${USER}@${VM_IP}" "exit" 2>&1)
     SSH_RC=$?
     set -e
     if [ $SSH_RC -eq 0 ]; then
         echo "✅ SSH ready at $VM_IP"
         echo "Checking cloud-init status..."
-        ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "ubuntu@${VM_IP}" \
-            "cat /home/ubuntu/setup-complete.txt 2>/dev/null; tail -20 /var/log/cloud-init-output.log 2>/dev/null" 2>/dev/null || true
+        ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "${USER}@${VM_IP}" \
+            "cat /home/${USER}/setup-complete.txt 2>/dev/null; tail -20 /var/log/cloud-init-output.log 2>/dev/null" 2>/dev/null || true
         break
     fi
     echo "  Waiting for SSH... ($i/60)"
-    sleep 5
 done
 
 # --- Final output ---
@@ -286,7 +287,7 @@ echo ""
 echo "🔐 SSH key: $SSH_KEY_FILE"
 echo "🔐 Password: $RANDOM_PASSWORD (saved to $PASSWORDS_FILE)"
 if [ -n "$VM_IP" ]; then
-    echo "🔗 ssh -i $SSH_KEY_FILE ubuntu@${VM_IP}"
+    echo "🔗 ssh -i \"${SSH_KEY_FILE}\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${USER}@${VM_IP}"
 fi
 echo ""
 echo "📝 Commands:"
