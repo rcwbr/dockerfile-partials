@@ -31,7 +31,6 @@ SSH_PUBLIC_KEY=$(cat "${SSH_KEY_FILE}.pub")
 
 # --- Password ---
 RANDOM_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" || true)
-PASSWORD_HASH=$(openssl passwd -6 "$RANDOM_PASSWORD")
 PASSWORDS_FILE="${VM_ROOT}/.password"
 echo "$RANDOM_PASSWORD" > "$PASSWORDS_FILE" 2>/dev/null || echo "$RANDOM_PASSWORD"
 chmod 600 "$PASSWORDS_FILE" 2>/dev/null || true
@@ -44,19 +43,19 @@ mkdir -p "$CONFIG_DRIVE_DIR"
 
 # --- Home directory ---
 HOME_DIR="${VM_ROOT}/home"
-mkdir -p "$HOME_DIR/.ssh"
 mkdir -p "$HOME_DIR/workspace"
 
 # --- Cloud-init user-data configuration ---
-# Use write_files for fstab content with proper YAML formatting
-# and runcmd with explicit mkdir + mount to avoid systemd dependencies
+# Uses #cloud-config (NoCloud datasource via cidata ISO) for first-boot
+# provisioning of the Ubuntu 26.04 cloud image.
 cat > "${CONFIG_DRIVE_DIR}/user-data" << 'USERDATA_END'
 #cloud-config
 hostname: container-workspace-vm
 manage_etc_hosts: true
-ssh_pwauth: true
 disable_root: true
+
 package_update: true
+
 packages:
   - qemu-guest-agent
   - docker.io
@@ -65,41 +64,41 @@ packages:
   - wget
   - net-tools
   - cloud-guest-utils
+
+# mounts: 9p VirtFS share + bind mounts from shared directory.
+# Runs in the init stage, before users module — so ssh_authorized_keys
+# in the users section below persist on the shared host directory.
+mounts:
+  - [share, /mnt/shared, 9p, trans=virtio,version=9p2000.L,rw,_netdev,nofail,x-systemd.device-timeout=10s, 0, 0]
+  - [/mnt/shared/utm-vm/container-workspace-utm-vm/home, /home/{{USER}}, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
+  - [/mnt/shared/workspace, /home/{{USER}}/workspace, none, bind,_netdev,nofail,x-systemd.requires=/mnt/shared,x-systemd.device-timeout=10s, 0, 0]
+
 users:
   - name: {{USER}}
-    uid: {{UID}}
-    gid: {{GID}}
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
     shell: /bin/bash
     lock_passwd: false
-    passwd: {{PASSWORD_HASH}}
-resize_rootfs: true
-write_files:
-  - path: /etc/fstab
-    content: |
-        share           /mnt/shared   9p    trans=virtio,version=9p2000.L,rw,_netdev,nofail,auto   0  0
-        /mnt/shared/utm-vm/container-workspace-utm-vm/home   /home/{{USER}}   none  bind,_netdev,nofail,auto,x-systemd.requires=/mnt/shared 0  0
-        /mnt/shared/workspace   /home/{{USER}}/workspace  none  bind,_netdev,nofail,auto,x-systemd.requires=/mnt/shared 0  0
-    permissions: '0644'
+    ssh_authorized_keys:
+      - {{SSH_PUBLIC_KEY}}
+
+# Password management via chpasswd (recommended approach — more portable
+# than hashed_passwd in the users module, handles distribution differences).
+chpasswd:
+  expire: false
+  users:
+    - name: {{USER}}
+      password: {{PASSWORD}}
+
 runcmd:
   - systemctl enable --now qemu-guest-agent
   - systemctl enable --now docker
-  - [cloud-init-per once, growpart, /usr/bin/growpart, /dev/vda, 1]
-  - [cloud-init-per once, resize2fs, /dev/vda1]
-  - mkdir -p /mnt/shared /home/{{USER}} /home/{{USER}}/workspace
-  - mount /mnt/shared 2>/dev/null || mount -t 9p -o trans=virtio,version=9p2000.L,rw share /mnt/shared
-  - mount /home/{{USER}} 2>/dev/null || mount --bind /mnt/shared/utm-vm/container-workspace-utm-vm/home /home/{{USER}}
-  - mount /home/{{USER}}/workspace 2>/dev/null || mount --bind /mnt/shared/workspace /home/{{USER}}/workspace
-  - echo "=== CLOUD-INIT COMPLETE ===" > /home/{{USER}}/setup-complete.txt
-  - echo "Timestamp: $(date)" >> /home/{{USER}}/setup-complete.txt
-  - ip addr show > /home/{{USER}}/network-info.txt 2>&1
+
+final_message: "Cloud-init configuration complete for container-workspace-vm"
 USERDATA_END
 
 sed -i '' "s|{{SSH_PUBLIC_KEY}}|${SSH_PUBLIC_KEY}|g" "${CONFIG_DRIVE_DIR}/user-data"
-sed -i '' "s|{{PASSWORD_HASH}}|${PASSWORD_HASH}|g" "${CONFIG_DRIVE_DIR}/user-data"
+sed -i '' "s|{{PASSWORD}}|${RANDOM_PASSWORD}|g" "${CONFIG_DRIVE_DIR}/user-data"
 sed -i '' "s|{{USER}}|${USER}|g" "${CONFIG_DRIVE_DIR}/user-data"
-sed -i '' "s|{{UID}}|$(id -u)|g" "${CONFIG_DRIVE_DIR}/user-data"
-sed -i '' "s|{{GID}}|$(id -g)|g" "${CONFIG_DRIVE_DIR}/user-data"
 
 cat > "${CONFIG_DRIVE_DIR}/meta-data" << EOF
 instance-id: iid-${VM_NAME}
@@ -258,11 +257,8 @@ for i in {1..60}; do
         sleep 5
         continue
     fi
-    cat "${SSH_KEY_FILE}.pub" > "$HOME_DIR/.ssh/authorized_keys"
     sleep 5
     set +e
-    "$UTMCTL" exec "${VM_NAME}" --cmd chmod 700 "/home/${USER}/.ssh"
-    "$UTMCTL" exec "${VM_NAME}" --cmd chmod 600 "/home/${USER}/.ssh/authorized_keys"
     SSH_OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "${USER}@${VM_IP}" "exit" 2>&1)
     SSH_RC=$?
     set -e
@@ -270,7 +266,7 @@ for i in {1..60}; do
         echo "✅ SSH ready at $VM_IP"
         echo "Checking cloud-init status..."
         ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i "$SSH_KEY_FILE" "${USER}@${VM_IP}" \
-            "cat /home/${USER}/setup-complete.txt 2>/dev/null; tail -20 /var/log/cloud-init-output.log 2>/dev/null" 2>/dev/null || true
+            "tail -20 /var/log/cloud-init-output.log 2>/dev/null; cloud-init status 2>/dev/null || true" 2>/dev/null || true
         break
     fi
     echo "  Waiting for SSH... ($i/60)"

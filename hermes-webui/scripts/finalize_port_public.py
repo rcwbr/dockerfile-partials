@@ -109,24 +109,36 @@ def gh_api(endpoint: str, token: str, method: str = 'GET', data: dict | None = N
 def get_codespace_tunnel_props(codespace_name: str, token: str) -> dict:
     """Get tunnel connection properties (tunnelId, serviceUri, managePortsAccessToken)
     for the given codespace via the GitHub Codespaces REST API.
+
+    Tries both repo-scoped and user-scoped endpoints, since the repo-scoped
+    endpoint may return 404 for user-owned codespaces.
     """
+    # Try repo-scoped endpoint first, fall back to user-scoped
     repo = os.environ.get('GITHUB_REPOSITORY', '')
+    endpoints_to_try = []
     if repo:
-        cs_endpoint = f'/repos/{repo}/codespaces/{codespace_name}?internal=true&refresh=true'
-    else:
-        cs_endpoint = f'/user/codespaces/{codespace_name}?internal=true&refresh=true'
-    cs_info = gh_api(cs_endpoint, token)
-    tunnel_props = cs_info.get('connection', {}).get('tunnelProperties', {})
-    tunnel_id = tunnel_props.get('tunnelId', '')
-    tunnel_token = tunnel_props.get('managePortsAccessToken', '')
-    service_uri = tunnel_props.get('serviceUri', '')
-    if not tunnel_id or not tunnel_token or not service_uri:
-        raise ValueError('Missing tunnel connection properties')
-    return {
-        'tunnel_id': tunnel_id,
-        'tunnel_token': tunnel_token,
-        'service_uri': service_uri,
-    }
+        endpoints_to_try.append(f'/repos/{repo}/codespaces/{codespace_name}?internal=true&refresh=true')
+    endpoints_to_try.append(f'/user/codespaces/{codespace_name}?internal=true&refresh=true')
+
+    last_error = None
+    for endpoint in endpoints_to_try:
+        try:
+            cs_info = gh_api(endpoint, token)
+            tunnel_props = cs_info.get('connection', {}).get('tunnelProperties', {})
+            tunnel_id = tunnel_props.get('tunnelId', '')
+            tunnel_token = tunnel_props.get('managePortsAccessToken', '')
+            service_uri = tunnel_props.get('serviceUri', '')
+            if tunnel_id and tunnel_token and service_uri:
+                return {
+                    'tunnel_id': tunnel_id,
+                    'tunnel_token': tunnel_token,
+                    'service_uri': service_uri,
+                }
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            last_error = e
+            continue
+
+    raise ValueError(f'Could not retrieve tunnel connection properties: {last_error}')
 
 
 def tunnels_api_put(service_uri: str, tunnel_id: str, token: str, port: int) -> dict:
