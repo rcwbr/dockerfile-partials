@@ -20,7 +20,7 @@ RUN --mount=type=bind,source=hermes-webui/cleanup-targets,target=/tmp/cleanup-ta
     --mount=type=bind,source=hermes-webui/scripts,target=/tmp/scripts \
     <<EOF
 # Install hermes-agent with minimal flags
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_AGENT_VERSION_TAG}/scripts/install.sh | bash -s -- --no-skills --skip-browser --skip-setup --non-interactive
+curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_AGENT_VERSION_TAG}/scripts/install.sh | bash -s -- --no-skills --skip-browser --skip-setup --non-interactive --branch "${HERMES_AGENT_VERSION_TAG}"
 
 # Install faster-whisper (voice/STT) into the agent venv so that local
 # speech-to-text is available without a lazy first-use install.
