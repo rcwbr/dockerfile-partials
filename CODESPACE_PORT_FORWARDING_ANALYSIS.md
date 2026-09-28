@@ -272,6 +272,33 @@ which forces the tunnel proxy to tear down and recreate its forwarding path. Thi
 why the visibility toggle is essential — it doesn't just change a metadata field, it
 physically re-establishes the tunnel proxy's connection to the published port.
 
+### Updated Root Cause (Post-In-Depth Analysis)
+
+During in-depth testing (2026-09-28), the following was discovered:
+
+1. **The `?internal=true` endpoint works for Available codespaces**: The endpoint
+   `GET /user/codespaces/{name}?internal=true&refresh=true` returns tunnel connection
+   properties (`tunnelId`, `serviceUri`, `managePortsAccessToken`) for ANY Available
+   codespace — not just the active session. The earlier 404 errors were from the
+   **repo-scoped** endpoint (`/repos/{owner}/{repo}/codespaces/{name}`) which returns
+   404 for user-owned codespaces.
+
+2. **Two-layer port registration**: The Codespaces port system has two layers:
+   - **Tunnels API**: Manages the tunnel object and port access control entries (PUT)
+   - **Codespace port forwarding service**: Manages the Codespace API `ports` array
+   - The `gh CLI` visibility toggle goes through both layers (Tunnels API + port forwarding)
+   - The Tunnels API PUT alone only manages the Tunnels API layer, NOT the port forwarding layer
+
+3. **The tunnel proxy relay is the key**: The `gh CLI`'s `NewPortForwarder` creates a
+   WebSocket connection to the tunnel relay endpoint. This host connection establishes
+   the forwarding path from the public URL to the codespace's local port. The Tunnels
+   API PUT does NOT create this connection — only the `gh CLI` (or VS Code server) does.
+
+**The current issue**: Running `finalize_port_public.py` from the active codespace
+(animated-eureka) targeting a test codespace works perfectly. But when `post_start_command`
+runs inside the test codespace's devcontainer, the `gh CLI` visibility toggle fails to
+establish the tunnel proxy relay connection, leaving the public URL inaccessible.
+
 ## Reference
 
 - [Codespaces port forwarding documentation](https://docs.github.com/en/codespaces/setup-routes/about-port-forwarding-in-codespaces)
