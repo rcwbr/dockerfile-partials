@@ -60,6 +60,8 @@ package_update: true
 packages:
   - qemu-guest-agent
   - docker.io
+  - docker-compose-v2
+  - docker-buildx
   - python3-pip
   - curl
   - wget
@@ -181,9 +183,9 @@ fi
 # Restart UTM so it re-reads config.plist from disk (UTM caches in memory)
 echo "Restarting UTM to apply configuration..."
 pkill -f UTM 2>/dev/null || true
-sleep 5
+sleep 3
 open -a UTM
-sleep 15
+sleep 3
 
 # --- Symlink ---
 WORKSPACE_UTM_DIR="${VM_ROOT}/utm"
