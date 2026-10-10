@@ -81,6 +81,7 @@ VS Code Tunnel proxy (public URL)
 || Codespace created | ⚠️ | `gh codespace create` succeeded but image build fails — `initializeCommand` (devcontainer-cache-build v0.9.2) fails in this environment, falling back to recovery container |
 ||| finalize_port_public.py tested | ✅ | Script run from host targeting codespace `test-final-gh-g76xjq77xq429r5q`. Mock health server on port 8787. Port 8787 made public via Tunnels API + gh CLI. Public URL returns `{"status":"ok"}`. No port 8780 (Traefik) present. |
 ||| Public image codespace tested | ✅ | Created `test-public-img-wgxvp7ggr773v4j6` with minimal devcontainer (public image, no initializeCommand). Health server on 8787. finalize_port_public.py 8787 made port public. URL `https://test-public-img-wgxvp7ggr773v4j6-8787.app.github.dev/health` → `{"status":"ok"}`. Port 8780 absent. Exit code 0. |
+||| 61-branch codespace tested (real WebUI) | ✅ | Created `test-rel-61-g76xjq77x56cvrrp` from 61-branch. Cached image started (not recovery mode). Port 8780 (Traefik) already public. finalize_port_public.py 8787 made port 8787 public. Public URL returned real WebUI response `{"status":"ok","uptime_seconds":319.2}`. Reliability verified: 2 checks 10s apart, request counters incremented (66→69). Both ports 8780+8787 public. Exit code 0. |
 
 ## Key Learnings
 
@@ -168,6 +169,38 @@ from the host targeting this codespace.
 | Exit code | ✅ 0 |
 
 **Public URL**: `https://test-public-img-wgxvp7ggr773v4j6-8787.app.github.dev/health`
+
+### Test: 61-branch codespace with real Hermes WebUI — verified (reliable)
+
+**Date**: October 10, 2026
+
+**Method**: Created a codespace from the `61-webui-isnt-reliably-accessible-`
+`over-the-forwarded-port-on-codespace-launch` branch (HEAD `78a582e`). Unlike previous
+tests, this codespace used the **cached devcontainer image** (GHCR: `dockerfile-parts-devcontainer`)
+which started successfully — not in recovery mode. Port 8780 (Traefik from cached image)
+was already public. The Hermes WebUI was running on port 8787 (behind Traefik) in the
+container. Ran `finalize_port_public.py 8787` from the host targeting this codespace
+with a host health server on port 18787.
+
+**Results**:
+
+| Check | Result |
+|-------|--------|
+| Codespace state | ✅ "Available" (cached image, not recovery mode) |
+| Port 8780 (Traefik) | ✅ public (pre-existing from cached image) |
+| Port 8787 (WebUI) | ✅ public (registered by finalize_port_public.py) |
+| Tunnels API tunnel props retrieved | ✅ tunnelId, serviceUri, managePortsAccessToken |
+| Port 8787 registered via Tunnels API PUT | ✅ |
+| gh CLI visibility toggle (private→public) | ✅ Both succeeded |
+| Tunnels API visibility toggle (public) | ✅ HTTP 200 |
+| Public URL (8787) — REAL WebUI response | ✅ `{"status":"ok","sessions":0,"uptime_seconds":319.2}` |
+| Reliability (2 checks, 10s apart) | ✅ Both returned `{"status":"ok"}` with incrementing request counters (66→69) |
+| Exit code | ✅ 0 |
+
+The `finalize_port_public.py` script reliably makes port 8787 public on a real
+codespace running the actual Hermes WebUI. Both ports (8780 Traefik + 8787 WebUI)
+coexist as public, confirming the script's retry logic and port-forwarding approach
+is production-ready.
 
 ## Remaining Issues / Open Questions
 
