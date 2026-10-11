@@ -17,7 +17,9 @@
   "features": {
     "ghcr.io/devcontainers/features/sshd:1": {}
   },
-  "forwardPorts": [8787],
+  "forwardPorts": [
+    8787
+  ],
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",

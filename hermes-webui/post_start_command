@@ -13,6 +13,7 @@ set -euo pipefail
 # Use ". " (dot) instead of "source" for POSIX sh compatibility.
 if [ -f /workspaces/.codespaces/shared/.env ]; then
   set +e
+  # shellcheck disable=SC1091
   . /workspaces/.codespaces/shared/.env
   set -e
 fi
@@ -20,8 +21,8 @@ fi
 # Source the Hermes Web UI env file.
 # This file may also source the shared Codespaces .env file and set additional vars.
 if [ -n "${HERMES_WEBUI_ENV_FILE:-}" ] && [ -f "${HERMES_WEBUI_ENV_FILE}" ]; then
-  # shellcheck disable=SC1090
   set +e
+  # shellcheck disable=SC1090
   . "${HERMES_WEBUI_ENV_FILE}"
   set -e
 fi
