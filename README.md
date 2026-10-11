@@ -734,10 +734,10 @@ agent venv.
 The partial handles the webui lifecycle and Codespaces port visibility via `postStartCommand`:
 
 - **On container start** (`postStartCommand`): sources the env file, starts the webui via
-  `ctl.sh start` on port 8787, waits for its `/health` endpoint, then uses
-  `finalize_port_public.py` (Tunnels Management API + gh CLI visibility toggle with a
-  5-minute retry loop) to make port 8787 publicly accessible on Codespaces. No Traefik
-  reverse proxy or landing-page server is used — the port points directly to the WebUI.
+  `ctl.sh start` on port 8787, waits for its `/health` endpoint, then uses `finalize_port_public.py`
+  (Tunnels Management API + gh CLI visibility toggle with a 5-minute retry loop) to make port 8787
+  publicly accessible on Codespaces. No Traefik reverse proxy or landing-page server is used — the
+  port points directly to the WebUI.
 
 #### hermes-webui Dockerfile usage<a name="hermes-webui-dockerfile-usage"></a>
 
@@ -903,12 +903,11 @@ Then reference it from `devcontainer.json`:
 
 **Port forwarding:**
 
-Port `8787` (the Hermes WebUI) is automatically detected by Codespaces and registered as
-a forwarded port. On Codespaces, the `post_start_command` script makes the port publicly
-accessible using `finalize_port_public.py 8787`, which uses the Tunnels Management API +
-gh CLI visibility toggle (private→public) to fix stale Codespace tunnel entries and
-establish the tunnel relay connection. The script retries for up to 5 minutes until the
-public endpoint returns HTTP 200 with `status=ok`.
+Port `8787` (the Hermes WebUI) is automatically detected by Codespaces and registered as a forwarded
+port. On Codespaces, the `post_start_command` script makes the port publicly accessible using
+`finalize_port_public.py 8787`, which uses the Tunnels Management API + gh CLI visibility toggle
+(private→public) to fix stale Codespace tunnel entries and establish the tunnel relay connection.
+The script retries for up to 5 minutes until the public endpoint returns HTTP 200 with `status=ok`.
 
 Do **not** set `forwardPorts` in `devcontainer.json` — the direct-to-WebUI port (8787) is
 auto-detected by Codespaces, and `finalize_port_public.py` handles visibility without it.

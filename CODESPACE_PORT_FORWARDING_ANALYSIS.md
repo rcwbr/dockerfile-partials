@@ -21,8 +21,8 @@ Hermes WebUI (port 8787, running directly in the devcontainer)
 VS Code Tunnel proxy (public URL)
 ```
 
-- **Port 8787**: Hermes WebUI Python server (runs directly in the devcontainer).
-  This is the port we make public on Codespaces.
+- **Port 8787**: Hermes WebUI Python server (runs directly in the devcontainer). This is the port we
+  make public on Codespaces.
 
 ### What was removed
 
@@ -42,6 +42,7 @@ Hermes WebUI (port 8787, running directly in the devcontainer)
 ```
 
 Traefik added unnecessary complexity:
+
 - A Docker container running on the host VM's Docker daemon
 - A Docker named volume for config persistence
 - A landing-page server on port 8081 (served as a 502–504 fallback by Traefik middleware)
@@ -70,8 +71,8 @@ Key characteristics:
 The `post_start_command` script at `/opt/devcontainers/post_start_commands/hermes-webui`:
 
 1. Sources the `.hermes-webui.env` file for API keys and configuration
-2. Starts the WebUI on port 8787 via `ctl.sh start`
-3. Calls `finalize_port_public.py 8787` which:
+1. Starts the WebUI on port 8787 via `ctl.sh start`
+1. Calls `finalize_port_public.py 8787` which:
    - Polls the WebUI `/health` endpoint until `status == "ok"` (max 120s)
    - Uses the Tunnels Management API to register port 8787
    - Toggles port visibility (private→public) via gh CLI + Tunnels API
@@ -82,14 +83,14 @@ The `post_start_command` script at `/opt/devcontainers/post_start_commands/herme
 
 The two approaches can race:
 
-1. **Codespaces auto-detects port 8787** (the WebUI) and registers it as private. This
-   happens at an unknown time relative to our script.
+1. **Codespaces auto-detects port 8787** (the WebUI) and registers it as private. This happens at an
+   unknown time relative to our script.
 
-2. **Our script registers port 8787** as public. This happens after the WebUI health check
-   passes (up to 120 seconds).
+1. **Our script registers port 8787** as public. This happens after the WebUI health check passes
+   (up to 120 seconds).
 
-3. **The Codespace URL that Codespaces auto-generates** for the user points to the
-   auto-detected port 8787.
+1. **The Codespace URL that Codespaces auto-generates** for the user points to the auto-detected
+   port 8787.
 
 ### The Race Condition Timeline
 
@@ -104,26 +105,24 @@ T+5-30: finalize_port_public.py registers 8787 as public (Tunnels API + gh CLI)
 T+user: User opens the Codespace URL for port 8787
 ```
 
-If the user opens the URL before `finalize_port_public.py` completes the visibility toggle,
-they may see 404 or auth-page HTML (5068 bytes) because the port is still private and the
-Codespace tunnel proxy intercepts private-port requests.
+If the user opens the URL before `finalize_port_public.py` completes the visibility toggle, they may
+see 404 or auth-page HTML (5068 bytes) because the port is still private and the Codespace tunnel
+proxy intercepts private-port requests.
 
 ## Root Cause: Codespaces Auto-Detects Port 8787
 
-Through live testing, we discovered that the 404/auth-page issue is NOT from a proxy
-being unready — it's from the **Codespaces tunnel proxy** returning its own response for
-**private** ports.
+Through live testing, we discovered that the 404/auth-page issue is NOT from a proxy being unready —
+it's from the **Codespaces tunnel proxy** returning its own response for **private** ports.
 
 ### What happens:
 
 1. Codespaces auto-detects port 8787 (WebUI listening) and registers it as **private**
-2. The Codespace UI may auto-open port 8787 (private) when the user clicks "Open in Browser"
-3. The Codespaces tunnel proxy for **private ports** intercepts certain request paths
-   and serves its own response — for paths like `/health`, `/api/`, `/static/`, it returns
-   the same HTML page (5068 bytes). This is the Codespace tunnel's auth interception, not
-   the WebUI itself.
-4. When the tunnel proxy can't route properly (e.g., during startup, or for paths it
-   doesn't expect), it returns **404 with an empty body** from
+1. The Codespace UI may auto-open port 8787 (private) when the user clicks "Open in Browser"
+1. The Codespaces tunnel proxy for **private ports** intercepts certain request paths and serves its
+   own response — for paths like `/health`, `/api/`, `/static/`, it returns the same HTML page (5068
+   bytes). This is the Codespace tunnel's auth interception, not the WebUI itself.
+1. When the tunnel proxy can't route properly (e.g., during startup, or for paths it doesn't
+   expect), it returns **404 with an empty body** from
    `X-Served-By: tunnels-prod-rel-usw3-v3-cluster`
 
 ### Evidence from testing (with Traefik, port 8780 public):
@@ -140,17 +139,18 @@ Port 8787 (private - WebUI direct):
   /api/: 200 (len=5068) - Codespace tunnel auth page ✗
 ```
 
-The 5068-byte responses on port 8787 are from the Codespace tunnel proxy's
-authentication layer, not from the Hermes WebUI.
+The 5068-byte responses on port 8787 are from the Codespace tunnel proxy's authentication layer, not
+from the Hermes WebUI.
 
 ## Fixes Applied
 
 ### Fix 1: No Traefik — Direct to WebUI on Port 8787
 
-Removed the Traefik reverse proxy entirely. The WebUI runs directly in the devcontainer
-on port 8787. `finalize_port_public.py` targets port 8787 directly.
+Removed the Traefik reverse proxy entirely. The WebUI runs directly in the devcontainer on port
+8787\. `finalize_port_public.py` targets port 8787 directly.
 
 This eliminates:
+
 - The Docker container lifecycle for Traefik
 - The named-volume config persistence dance
 - The landing-page server on port 8081
@@ -158,47 +158,46 @@ This eliminates:
 
 ### Fix 2: `finalize_port_public.py` makes port 8787 public (Primary Fix)
 
-The `finalize_port_public.py` script (adapted from the 61-branch approach) makes port 8787
-public via the Tunnels Management API. The key insight from the analysis:
+The `finalize_port_public.py` script (adapted from the 61-branch approach) makes port 8787 public
+via the Tunnels Management API. The key insight from the analysis:
 
 - **Codespaces auto-detects port 8787 and registers it as private**
-- The script's visibility toggle (private→public) **forces the tunnel proxy to tear down
-  and recreate the forwarding path**, fixing the 404/auth-page issue
+- The script's visibility toggle (private→public) **forces the tunnel proxy to tear down and
+  recreate the forwarding path**, fixing the 404/auth-page issue
 
 **No `forwardPorts` in `devcontainer.json`:** When Docker published ports are used in a
-`--network=host` devcontainer, `forwardPorts` should NOT be set — it creates conflicting
-tunnel entries. Instead, let Codespaces auto-detect the port, then use the Tunnels API + gh CLI
-visibility toggle to make it public.
+`--network=host` devcontainer, `forwardPorts` should NOT be set — it creates conflicting tunnel
+entries. Instead, let Codespaces auto-detect the port, then use the Tunnels API + gh CLI visibility
+toggle to make it public.
 
 ### Fix 3: Force Codespace tunnel port visibility refresh (CRITICAL)
 
-The `finalize_port_public.py` script registers the port via the VS Code
-Tunnels Management API (PUT), then uses the `gh CLI` visibility toggle
-(private→public). The order matters:
+The `finalize_port_public.py` script registers the port via the VS Code Tunnels Management API
+(PUT), then uses the `gh CLI` visibility toggle (private→public). The order matters:
 
-1. **gh CLI first** — goes through the Codespace connection layer, which properly
-   signals the tunnel proxy to re-establish its forwarding path
-2. **Tunnels API second** — ensures the access control entries are set correctly
+1. **gh CLI first** — goes through the Codespace connection layer, which properly signals the tunnel
+   proxy to re-establish its forwarding path
+1. **Tunnels API second** — ensures the access control entries are set correctly
 
-The entire register+toggle+verify cycle is retried for up to 5 minutes,
-ensuring the endpoint becomes accessible even when the initial tunnel
-proxy entry is stale.
+The entire register+toggle+verify cycle is retried for up to 5 minutes, ensuring the endpoint
+becomes accessible even when the initial tunnel proxy entry is stale.
 
-The `gh CLI` creates a port forwarder that establishes a WebSocket connection to the
-tunnel relay endpoint — this physical connection is what makes the public URL
-reachable. The Tunnels API PUT alone only manages the Tunnels API layer, NOT the
-port forwarding layer, which is why both are needed.
+The `gh CLI` creates a port forwarder that establishes a WebSocket connection to the tunnel relay
+endpoint — this physical connection is what makes the public URL reachable. The Tunnels API PUT
+alone only manages the Tunnels API layer, NOT the port forwarding layer, which is why both are
+needed.
 
 ## Key Findings from API Investigation
 
 The `gh codespace ports visibility` command uses the **VS Code Tunnels Management API**
-(`tunnels.api.visualstudio.com`), not the GitHub REST API. The visibility toggle works
-by updating access control entries on the port via `PUT /api/v1/tunnels/{tunnelId}/ports/{port}`,
-which forces the tunnel proxy to tear down and recreate the forwarding path.
+(`tunnels.api.visualstudio.com`), not the GitHub REST API. The visibility toggle works by updating
+access control entries on the port via `PUT /api/v1/tunnels/{tunnelId}/ports/{port}`, which forces
+the tunnel proxy to tear down and recreate the forwarding path.
 
 ### Two-layer port registration
 
 The Codespaces port system has two layers:
+
 - **Tunnels API**: Manages the tunnel object and port access control entries (PUT)
 - **Codespace port forwarding service**: Manages the Codespace API `ports` array
 - The `gh CLI` visibility toggle goes through both layers (Tunnels API + port forwarding)
@@ -206,16 +205,15 @@ The Codespaces port system has two layers:
 
 ### The tunnel proxy relay is the key
 
-The `gh CLI`'s `NewPortForwarder` creates a WebSocket connection to the tunnel relay endpoint.
-This host connection establishes the forwarding path from the public URL to the codespace's
-local port. The Tunnels API PUT does NOT create this connection — only the `gh CLI` (or VS Code
-server) does.
+The `gh CLI`'s `NewPortForwarder` creates a WebSocket connection to the tunnel relay endpoint. This
+host connection establishes the forwarding path from the public URL to the codespace's local port.
+The Tunnels API PUT does NOT create this connection — only the `gh CLI` (or VS Code server) does.
 
 ### User-scoped endpoint works for any Available codespace
 
 The endpoint `GET /user/codespaces/{name}?internal=true&refresh=true` returns tunnel connection
-properties (`tunnelId`, `serviceUri`, `managePortsAccessToken`) for ANY Available codespace —
-not just the active session. The earlier 404 errors were from the **repo-scoped** endpoint
+properties (`tunnelId`, `serviceUri`, `managePortsAccessToken`) for ANY Available codespace — not
+just the active session. The earlier 404 errors were from the **repo-scoped** endpoint
 (`/repos/{owner}/{repo}/codespaces/{name}`) which returns 404 for user-owned codespaces.
 
 ## Testing Methodology
@@ -223,20 +221,21 @@ not just the active session. The earlier 404 errors were from the **repo-scoped*
 To verify the fix:
 
 1. Commit changes to a feature branch
-2. Push to GitHub
-3. Create a new Codespace from the feature branch
-4. Examine the ports published by the new Codespace via:
+1. Push to GitHub
+1. Create a new Codespace from the feature branch
+1. Examine the ports published by the new Codespace via:
    ```bash
    gh codespace ports --codespace "$CODESPACE_NAME"
    ```
-5. Verify port 8787 is registered and publicly accessible
-6. Verify no 404/auth-page errors on initial load
+1. Verify port 8787 is registered and publicly accessible
+1. Verify no 404/auth-page errors on initial load
 
 ## Test Results
 
 ### No-Traefik Architecture Test
 
 Created a new codespace from the no-Traefik branch:
+
 - No `forwardPorts` in devcontainer.json
 - WebUI starts directly on port 8787
 - `finalize_port_public.py 8787` runs after health check
