@@ -1,7 +1,7 @@
 {
   "containerEnv": {
     "CONTAINER_WORKSPACE_FOLDER": "${containerWorkspaceFolder}",
-    "DEVCONTAINER_HOST_WORKSPACE_MOUNT": "/var/lib/docker/codespacemount/workspace/dockerfile-partials",
+    "DEVCONTAINER_HERMES_WEBUI": "/var/lib/docker/codespacemount/workspace/dockerfile-partials",
     "HERMES_WEBUI_ENV_FILE": "${containerWorkspaceFolder}/.hermes-webui.env"
   },
   "customizations": {
@@ -14,6 +14,10 @@
       ]
     }
   },
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
+  "forwardPorts": [8787],
   "hostRequirements": {
     "cpus": 2,
     "memory": "8gb",
@@ -30,6 +34,12 @@
   ],
   "name": "dockerfile-partials",
   "onCreateCommand": "/opt/devcontainers/on_create_command",
+  "portsAttributes": {
+    "8787": {
+      "label": "Hermes WebUI",
+      "visibility": "public"
+    }
+  },
   "postStartCommand": "/opt/devcontainers/post_start_command",
   "secrets": {
     "DOCKERFILE_PARTIALS_DEVCONTAINER_INITIALIZE": {

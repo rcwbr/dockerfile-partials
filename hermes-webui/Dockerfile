@@ -11,6 +11,7 @@ COPY --from=hermes_webui . $DEVCONTAINER_HERMES_WEBUI
 
 ENV HERMES_WEBUI_HOST=0.0.0.0
 ENV HERMES_WEBUI_PORT=8787
+ENV HERMES_WEBUI_PYTHON=/usr/local/lib/hermes-agent/venv/bin/python
 ENV HERMES_AGENT_VERSION_TAG=v2026.9.7
 # Install Hermes Agent, bootstrap, then clean up — all in a single RUN layer
 # so removed files don't persist as Docker layers.
@@ -35,10 +36,26 @@ else
   echo "WARNING: uv not found — skipping faster-whisper install" >&2
 fi
 
-# Bootstrap webui dependencies using the agent's venv python
-python -m venv "$DEVCONTAINER_HERMES_WEBUI/venv"
-. "$DEVCONTAINER_HERMES_WEBUI/venv/bin/activate"
+# Install WebUI dependencies into the agent's venv so that the same
+# interpreter can import both WebUI deps and Hermes Agent modules.
+# Also install `pathspec` explicitly — it's needed by cleanup.py but
+# the agent's uv.lock sync fails on CI (Python 3.11 < lockfile's 3.14),
+# so the PyPI fallback skips it.
+# Also install core agent deps (python-dotenv, httpx, ruamel.yaml, psutil,
+# pydantic, openai) into the agent venv — the agent's uv.lock sync also
+# skips these on Python 3.11, but ensure_python_has_webui_deps() in
+# bootstrap.py validates `from run_agent import AIAgent` at runtime,
+# which requires them.
+# Uses uv (not pip) because the agent venv has no pip module.
 touch __init__.py
+"$uv_bin" pip install --python /usr/local/lib/hermes-agent/venv/bin/python \
+    -r "$DEVCONTAINER_HERMES_WEBUI/requirements.txt" pathspec \
+    python-dotenv httpx ruamel.yaml psutil pydantic openai
+export HERMES_WEBUI_PYTHON=/usr/local/lib/hermes-agent/venv/bin/python
+# bootstrap_webui.py skips ensure_python_has_webui_deps() — its import
+# check ("from run_agent import AIAgent") fails in CI due to version
+# conflicts with HERMES_AGENT_VERSION_TAG=v2026.9.7. Deps are installed
+# here; the check is unnecessary for the build.
 python /tmp/scripts/bootstrap_webui.py
 
 rm -rf "$DEVCONTAINER_HERMES_WEBUI/venv"

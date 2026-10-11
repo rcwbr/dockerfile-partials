@@ -7,7 +7,7 @@ WebUI's native port so that the Codespaces tunnel proxy routes public traffic
 straight to the WebUI server.
 
 It:
-  1. Polls the Hermes WebUI /health endpoint until status == "ok" (max 120s)
+  1. Polls the Hermes WebUI /health endpoint until status == "ok" (max 600s)
   2. If not in a Codespace, exits successfully (no-op)
   3. If in a Codespace: detects name, reads GitHub token, queries the Codespace
      details API for tunnel connection properties, registers the port on the
@@ -59,7 +59,7 @@ def get_env_value(key: str) -> str | None:
     return None
 
 
-def wait_for_webui_health(host: str = '127.0.0.1', port: int = 8787, timeout: int = 120) -> bool:
+def wait_for_webui_health(host: str = '127.0.0.1', port: int = 8787, timeout: int = 600) -> bool:
     """Poll /health until it returns status == "ok" or timeout expires."""
     health_url = f'http://{host}:{port}/health'
     print(f'Waiting for Hermes Web UI at {health_url}...')
@@ -90,18 +90,24 @@ def get_github_token() -> str | None:
     """Get the GitHub token from env or shared .env file.
 
     Priority:
-      1. HERMES_GITHUB_TOKEN env var (codespace-specific token)
-      2. GITHUB_TOKEN env var (from env or post_start_command export)
-      3. HERMES_GITHUB_TOKEN from .env file
-      4. GITHUB_TOKEN from .env file
+      1. GITHUB_TOKEN env var (codespace runtime token — has codespace scope)
+      2. HERMES_GITHUB_TOKEN env var (PAT with broad scope, fallback)
+      3. GITHUB_TOKEN from .env file (codespace runtime token)
+      4. HERMES_GITHUB_TOKEN from .env file (PAT)
+      5. GITHUB_CODESPACE_TOKEN from .env file (codespace-specific token)
+
+    GITHUB_TOKEN is preferred over HERMES_GITHUB_TOKEN because the codespace
+    runtime token carries the codespace scope needed for the Codespaces API.
     """
-    token = os.environ.get('HERMES_GITHUB_TOKEN', '').strip()
+    token = os.environ.get('GITHUB_TOKEN', '').strip()
     if not token:
-        token = os.environ.get('GITHUB_TOKEN', '').strip()
+        token = os.environ.get('HERMES_GITHUB_TOKEN', '').strip()
+    if not token:
+        token = get_env_value('GITHUB_TOKEN') or ''
     if not token:
         token = get_env_value('HERMES_GITHUB_TOKEN') or ''
     if not token:
-        token = get_env_value('GITHUB_TOKEN') or ''
+        token = get_env_value('GITHUB_CODESPACE_TOKEN') or ''
     return token if token else None
 
 
@@ -382,8 +388,8 @@ def main():
     # 1. Wait for WebUI to be ready
     hwebui_host = os.environ.get('HERMES_WEBUI_HOST', '127.0.0.1')
     hwebui_port = int(os.environ.get('HERMES_WEBUI_PORT', '8787'))
-    if not wait_for_webui_health(hwebui_host, hwebui_port, timeout=120):
-        print('[error] Hermes Web UI did not become ready within 120 seconds', file=sys.stderr)
+    if not wait_for_webui_health(hwebui_host, hwebui_port, timeout=600):
+        print('[error] Hermes Web UI did not become ready within 600 seconds', file=sys.stderr)
         sys.exit(1)
 
     # 2. If not in a Codespace, nothing else to do
