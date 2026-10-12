@@ -115,8 +115,8 @@ checks 10s apart, request counters incremented (66→69). Both ports 8780+8787 p
   (`tunnelId`, `serviceUri`, `managePortsAccessToken` from `connection.tunnelProperties`), the
   Tunnels Management API (PUT) to register the port, and the gh CLI to toggle visibility and
   establish the relay. The `HERMES_GITHUB_TOKEN` env var (host's `gh auth token`) takes priority
-  over `GITHUB_TOKEN` inside the codespace, which is required because the codespace's
-  `GITHUB_TOKEN` (codespace-scoped) does not have Codespace API access.
+  over `GITHUB_TOKEN` inside the codespace, which is required because the codespace's `GITHUB_TOKEN`
+  (codespace-scoped) does not have Codespace API access.
 - **Tunnels API visibility toggle to `private` may return HTTP 400** — this is a non-fatal warning.
   The port was already registered by the Tunnels API PUT, and the subsequent public toggle succeeds
   (HTTP 200). The gh CLI toggle handles the relay establishment.
@@ -216,34 +216,32 @@ script's retry logic and port-forwarding approach is production-ready.
 **Date**: October 12, 2026
 
 **Method**: Created a codespace (`test-61-webui-vqwp9vqqr6rcx9wg`) from the
-`61-webui-isnt-reliably-accessible-over-the-forwarded-port-on-codespace-launch`
-branch (HEAD `99e626b`). The cached devcontainer image started successfully
-(not recovery mode). Port 8787 was already forwarded (Hermes WebUI running). Ran
-`finalize_port_public.py 8787` from the host targeting this codespace with the
-host's `gh auth token` (includes `codespace` scope).
+`61-webui-isnt-reliably-accessible-over-the-forwarded-port-on-codespace-launch` branch (HEAD
+`99e626b`). The cached devcontainer image started successfully (not recovery mode). Port 8787 was
+already forwarded (Hermes WebUI running). Ran `finalize_port_public.py 8787` from the host targeting
+this codespace with the host's `gh auth token` (includes `codespace` scope).
 
 **Results**:
 
-| Check                                     | Result                                                                  |
-| ----------------------------------------- | ----------------------------------------------------------------------- |
-| Codespace state                           | ✅ Available (cached image, not recovery mode)                          |
-| Port 8787 (WebUI) — inbound               | ✅ `{"status":"ok","uptime_seconds":621.8}`                             |
-| Port 8780 (Traefik)                       | ✅ Absent (connection refused on 8780)                                  |
-| Codespace API tunnel props retrieved      | ✅ tunnelId, serviceUri, manageTokens                                   |
-| Port 8787 registered via Tunnels API PUT  | ✅                                                                      |
-| gh CLI visibility toggle (private→public) | ✅ Both succeeded                                                       |
-| Tunnels API visibility toggle (public)    | ✅ HTTP 200 (private returned non-fatal 400)                            |
-| Public URL (8787) — REAL WebUI response   | ✅ `{"status":"ok","uptime_seconds":643.6}`                             |
-| Reliability (2 checks, 10s apart)         | ✅ Both returned `{"status":"ok"}` with incrementing counters (4→5)   |
-| Exit code                                 | ✅ 0                                                                    |
+- **Codespace state**: ✅ Available (cached image, not recovery mode)
+- **Port 8787 (WebUI) — inbound**: ✅ `{"status":"ok","uptime_seconds":621.8}`
+- **Port 8780 (Traefik)**: ✅ Absent (connection refused on 8780)
+- **Codespace API tunnel props retrieved**: ✅ tunnelId, serviceUri, manageTokens
+- **Port 8787 registered via Tunnels API PUT**: ✅
+- **gh CLI visibility toggle (private→public)**: ✅ Both succeeded
+- **Tunnels API visibility toggle (public)**: ✅ HTTP 200 (private returned non-fatal 400)
+- **Public URL (8787) — REAL WebUI response**: ✅ `{"status":"ok","uptime_seconds":643.6}`
+- **Reliability (2 checks, 10s apart)**: ✅ Both returned `{"status":"ok"}` with incrementing
+  counters (4→5)
+- **Exit code**: ✅ 0
 
 **Public URL**: `https://test-61-webui-vqwp9vqqr6rcx9wg-8787.app.github.dev/health`
 
 `gh cs ports` confirmed: `8787\tpublic\thttps://test-61-webui-vqwp9vqqr6rcx9wg-8787.app.github.dev`
 
-This second verification confirms the `finalize_port_public.py` script from the
-61-branch reliably makes port 8787 public with the real Hermes WebUI running,
-and port 8780 (Traefik) is absent — confirming the Traefik-removal architecture.
+This second verification confirms the `finalize_port_public.py` script from the 61-branch reliably
+makes port 8787 public with the real Hermes WebUI running, and port 8780 (Traefik) is absent —
+confirming the Traefik-removal architecture.
 
 ## Remaining Issues / Open Questions
 
