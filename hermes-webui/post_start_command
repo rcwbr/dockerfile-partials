@@ -1,69 +1,94 @@
 #!/bin/bash
-# Starts the webui server, Traefik reverse proxy, landing page server,
-# then makes port 8780 publicly accessible on Codespace start.
-# Port 8787 is the main WebUI port. Port 8780 runs Traefik which proxies
-# to 8787 and serves a landing page while the WebUI is still starting up.
+# Starts the Hermes WebUI server, then makes port 8787 publicly accessible
+# on Codespace start.
+#
+# Port 8787 is the main WebUI port. The WebUI runs directly in the
+# devcontainer (no Traefik reverse proxy, no landing-page server).
+# finalize_port_public.py waits for the WebUI /health endpoint, then
+# registers port 8787 as public via the Codespaces Tunnels API + gh CLI.
 set -euo pipefail
 
+# Source the shared Codespaces env file FIRST, before .hermes-webui.env,
+# so that GITHUB_TOKEN (codespace runtime token) is available.
+# Use ". " (dot) instead of "source" for POSIX sh compatibility.
+if [ -f /workspaces/.codespaces/shared/.env ]; then
+  set +e
+  # shellcheck disable=SC1091
+  . /workspaces/.codespaces/shared/.env
+  set -e
+fi
+
 # Source the Hermes Web UI env file.
-# This file sources the shared Codespaces .env file and exports the needed vars.
+# This file may also source the shared Codespaces .env file and set additional vars.
 if [ -n "${HERMES_WEBUI_ENV_FILE:-}" ] && [ -f "${HERMES_WEBUI_ENV_FILE}" ]; then
+  set +e
   # shellcheck disable=SC1090
-  source "${HERMES_WEBUI_ENV_FILE}"
+  . "${HERMES_WEBUI_ENV_FILE}"
+  set -e
+fi
+
+# Explicitly ensure the WebUI port is 8787 (Traefik was removed; the WebUI
+# listens directly on this port).  Setting this after sourcing env files
+# guarantees it isn't clobbered by any stale .env in the hermes_webui image.
+export HERMES_WEBUI_PORT=8787
+export HERMES_WEBUI_HOST="${HERMES_WEBUI_HOST:-0.0.0.0}"
+
+# Authenticate gh CLI for codespace API access (gh codespace ports visibility).
+# Prefer GITHUB_TOKEN (codespace runtime token) over HERMES_GITHUB_TOKEN (PAT).
+if ! gh auth status 2>/dev/null; then
+  _token="${GITHUB_TOKEN:-${HERMES_GITHUB_TOKEN:-}}"
+  if [ -n "$_token" ]; then
+    set +e
+    echo "$_token" | gh auth login --with-token 2>/dev/null || true
+    set -e
+  fi
+fi
+
+# Set GH_TOKEN for finalize_port_public.py's gh CLI calls.
+# Prefer GITHUB_TOKEN (codespace token) over HERMES_GITHUB_TOKEN (PAT).
+# Do NOT overwrite GITHUB_TOKEN if it's already set — the codespace runtime
+# token may have broader scopes than the PAT.
+if [ -z "${GH_TOKEN:-}" ]; then
+  export GH_TOKEN="${GITHUB_TOKEN:-${HERMES_GITHUB_TOKEN:-}}"
 fi
 
 # --- Start Hermes Web UI ---
+echo "[postStart] Starting Hermes Web UI on ${HERMES_WEBUI_HOST}:${HERMES_WEBUI_PORT}..."
+set +e
 /opt/devcontainers/hermes-webui/ctl.sh start
+_ctl_exit=$?
+set -e
+echo "[postStart] ctl.sh start exit code: ${_ctl_exit}"
 
-# --- Start landing page server (Python http.server on port 8081) ---
-# Traefik proxies to this when the WebUI is not yet ready (502/503/504).
-echo "Starting landing page server on port 8081..."
-_landing_dir="/opt/devcontainers/hermes-webui/traefik/static"
-nohup python3 -m http.server 8081 --directory "${_landing_dir}" --bind 0.0.0.0 >/dev/null 2>&1 &
-disown
-
-# --- Start Traefik reverse proxy (port 8780 -> 8787) ---
-# The Docker daemon runs on the Codespace host VM and cannot see files in the
-# devcontainer container's overlay filesystem at /opt/devcontainers/. However,
-# Docker named volumes are managed by the host VM's Docker daemon and are
-# accessible to containers. We write config files into a named volume using
-# base64 echo (via a temporary container), then mount that volume into Traefik.
-# Named volumes persist across container restarts and survive Codespace re-starts.
-echo "Starting Traefik reverse proxy on port 8780..."
-
-_traefik_image="traefik:v3.7.13"
-_traefik_vol="traefik-config-data"
-_traefik_src="/opt/devcontainers/hermes-webui/traefik"
-
-# Create named volume (idempotent — docker volume create is safe to repeat)
-docker volume create "${_traefik_vol}" >/dev/null 2>&1
-
-echo "Populating Traefik config volume..."
-_traefik_yml_b64="$(base64 -w0 "${_traefik_src}/traefik.yml")"
-_webui_yml_b64="$(base64 -w0 "${_traefik_src}/dynamic/webui.yml")"
-# Start temp container to write config files into the named volume
-docker run --rm --name traefik-vol-builder \
-  -v "${_traefik_vol}:/etc/traefik" \
-  --entrypoint sh "${_traefik_image}" \
-  -c "mkdir -p /etc/traefik/dynamic \
-    && echo '${_traefik_yml_b64}' | base64 -d > /etc/traefik/traefik.yml \
-    && echo '${_webui_yml_b64}' | base64 -d > /etc/traefik/dynamic/webui.yml"
-echo "Config volume populated"
-
-# Remove stale Traefik container if present
-docker rm -f traefik-proxy 2>/dev/null || true
-
-# Start Traefik from named volume (default entrypoint, no override needed)
-docker run -d --name traefik-proxy \
-  -p 8780:8780 \
-  -v "${_traefik_vol}:/etc/traefik:ro" \
-  --add-host=host.docker.internal:host-gateway \
-  "${_traefik_image}" \
-  --configFile=/etc/traefik/traefik.yml 2>/dev/null
-
-# --- Wait for readiness and make port public ---
-# Uses finalize_port_public.py which:
-# 1. Polls /health until the WebUI returns status == "ok" (max 120 seconds)
-# 2. Makes port 8780 publicly accessible via the Tunnels Management API
-echo "Waiting for readiness and making port 8780 public..."
-python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8780
+# --- Wait for WebUI health and make port 8787 public ---
+# finalize_port_public.py:
+# 1. Polls /health on port 8787 until the WebUI returns status == "ok" (max 600s)
+#    — the extended timeout accommodates slow first-time Python imports on
+#      fresh codespaces (the run_agent module compiles .pyc files on first import,
+#      which can take 5+ minutes).
+# 2. If in a Codespace: registers port 8787 as public via the Tunnels API + gh CLI
+#    visibility toggle (private->public).
+# 3. If the Tunnels API/CLI approach fails (e.g., token scope issues), the port
+#    is still forwarded as PUBLIC via devcontainer.json's forwardPorts +
+#    portsAttributes (Codespaces handles this natively, without API tokens).
+# 4. Retries the register+toggle+verify cycle for up to 5 minutes.
+#
+# On Codespace stop/start, the tunnel proxy's forwarding path can become stale.
+# The gh CLI visibility toggle re-establishes the relay host connection.
+echo "Waiting for WebUI health and making port 8787 public..."
+echo "GH_TOKEN: ${GH_TOKEN:+set}" >&2
+echo "GITHUB_TOKEN: ${GITHUB_TOKEN:+set}" >&2
+echo "CODESPACE_NAME: ${CODESPACE_NAME:-unset}" >&2
+echo "Running finalize_port_public.py..."
+set +e
+python3 /opt/devcontainers/hermes-webui/scripts/finalize_port_public.py 8787 > /tmp/finalize_port_public.log 2>&1
+_finalize_exit=$?
+set -e
+echo "finalize_port_public.py exit code: ${_finalize_exit}"
+echo "${_finalize_exit}" > /tmp/finalize_port_public.exit_code
+if [ "${_finalize_exit}" -ne 0 ]; then
+  echo "[postStart] WARNING: finalize_port_public.py exited with code ${_finalize_exit}" >&2
+  echo "[postStart] Port 8787 should still be forwarded as PUBLIC via devcontainer.json portsAttributes" >&2
+  echo "[postStart] ctl.sh start exit code was: ${_ctl_exit}" >&2
+fi
+echo "Done"
