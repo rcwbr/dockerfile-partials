@@ -18,7 +18,7 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githu
   | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
 apt-get update
 if ! dpkg-query --status gh ; then
-  apt-get install --allow-unauthenticated --no-install-recommends -y gh=2.97.0 ;
+  apt-get install --allow-unauthenticated --no-install-recommends -y gh=2.* ;
 fi
 apt-get clean
 apt-get autoclean
