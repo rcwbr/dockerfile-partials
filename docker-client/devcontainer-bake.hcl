@@ -11,4 +11,7 @@ target "docker-client" {
   contexts = {
     docker_image = "docker-image://docker:27.5.1-cli"
   }
+  args = {
+    DOCKER_GID = DOCKER_GID
+  }
 }
