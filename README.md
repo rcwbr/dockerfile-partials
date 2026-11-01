@@ -875,10 +875,37 @@ HERMES_HOME="${HERMES_HOME:-${HOME}/.hermes}"
 mkdir -p "${CONTAINER_WORKSPACE_FOLDER}/.hermes"
 sudo ln -sfn "${CONTAINER_WORKSPACE_FOLDER}/.hermes" "${HERMES_HOME}"
 sudo chown -R "${USER}:${USER}" "${HERMES_HOME}"
+
+# Link selected hermes-agent skills from the agent source tree into
+# $HERMES_HOME/skills so they are available at runtime. The hermes-agent
+# installer clones the full repo to /usr/local/lib/hermes-agent (including
+# skills/ and optional-skills/) even with --no-skills; we symlink only the
+# selected skills into the workspace skills dir rather than copying, so the
+# source of truth stays in the agent installation.
+HERMES_AGENT_SRC="/usr/local/lib/hermes-agent"
+
+# Bundled skills from skills/software-development/
+for skill in codebase-inspection github simplify-code systematic-debugging test-driven-development hermes-agent-skill-authoring; do
+	src="${HERMES_AGENT_SRC}/skills/software-development/${skill}"
+	dst="${HERMES_HOME}/skills/software-development/${skill}"
+	if [ -d "$src" ] && [ ! -e "$dst" ]; then
+		mkdir -p "$(dirname "$dst")"
+		ln -s "$src" "$dst"
+	fi
+done
+
+# Optional skills from optional-skills/<category>/
+for skill in devops/docker-management devops/setup-wizard-generator software-development/grill-me software-development/subagent-driven-development; do
+	src="${HERMES_AGENT_SRC}/optional-skills/${skill}"
+	dst="${HERMES_HOME}/skills/${skill}"
+	if [ -d "$src" ] && [ ! -e "$dst" ]; then
+		mkdir -p "$(dirname "$dst")"
+		ln -s "$src" "$dst"
+	fi
+done
+
 cat <<EOF >"${HERMES_HOME}/.env"
 export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
-# Fallback: defaults to the OpenRouter key as a safety net
-export HERMES_CUSTOM_INFERENCE_POOLSIDE_AI_API_KEY="${HERMES_CUSTOM_INFERENCE_POOLSIDE_AI_API_KEY:-${OPENROUTER_API_KEY:-}}"
 export HERMES_WEBUI_PASSWORD="${HERMES_WEBUI_PASSWORD:-}"
 export HERMES_WEBUI_DEFAULT_MODEL="${HERMES_WEBUI_DEFAULT_MODEL:-poolside/laguna-s-2.1:free}"
 export HERMES_WEBUI_SKIP_ONBOARDING=1
