@@ -824,11 +824,11 @@ The `.hermes-webui.env` file is **not part of the Docker layer definition** — 
 in the repository that runs inside the container at start time. It reads values from Codespaces
 secrets and environment variables:
 
-| Variable                     | Source             | Purpose                                                      |
-| ---------------------------- | ------------------ | ------------------------------------------------------------ |
-| `OPENROUTER_API_KEY`         | Codespaces secret  | API key for the LLM provider                                 |
-| `HERMES_WEBUI_PASSWORD`      | Codespaces secret  | Password for webui authentication                            |
-| `HERMES_WEBUI_DEFAULT_MODEL` | env var or default | Default LLM model (defaults to `poolside/laguna-s-2.1:free`) |
+| Variable                     | Source             | Purpose                                                             |
+| ---------------------------- | ------------------ | ------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`         | Codespaces secret  | API key for the LLM provider                                        |
+| `HERMES_WEBUI_PASSWORD`      | Codespaces secret  | Password for webui authentication                                   |
+| `HERMES_WEBUI_DEFAULT_MODEL` | env var or default | Default LLM model (defaults to `nvidia/nemotron-3.5-super-vl:free`) |
 
 The file is referenced via the `HERMES_WEBUI_ENV_FILE` container env variable set in
 `devcontainer.json`:
@@ -907,7 +907,7 @@ done
 cat <<EOF >"${HERMES_HOME}/.env"
 export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
 export HERMES_WEBUI_PASSWORD="${HERMES_WEBUI_PASSWORD:-}"
-export HERMES_WEBUI_DEFAULT_MODEL="${HERMES_WEBUI_DEFAULT_MODEL:-poolside/laguna-s-2.1:free}"
+export HERMES_WEBUI_DEFAULT_MODEL="${HERMES_WEBUI_DEFAULT_MODEL:-nvidia/nemotron-3.5-super-vl:free}"
 export HERMES_WEBUI_SKIP_ONBOARDING=1
 export HERMES_WEBUI_DEFAULT_WORKSPACE="${CONTAINER_WORKSPACE_FOLDER}"
 EOF
