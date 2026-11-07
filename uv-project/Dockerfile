@@ -31,7 +31,7 @@ RUN --mount=type=bind,from=uv,source=/uv,target=/bin/uv \
 
 
 # hadolint ignore=DL3006
-FROM deps AS dev
+FROM deps AS dev-deps
 ARG UV_PACKAGE_NAME
 
 RUN --mount=type=bind,from=uv,source=/uv,target=/bin/uv \
@@ -44,6 +44,10 @@ RUN --mount=type=bind,from=uv,source=/uv,target=/bin/uv \
     --mount=type=bind,from=local_context,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,from=local_context,source=src,target=src,rw \
     uv sync --locked --extra dev
+
+# hadolint ignore=DL3006
+FROM dev-deps AS dev
+ARG UV_PACKAGE_NAME
 
 RUN --mount=type=bind,source=uv-project/on_create_command,target=/tmp/on_create_command \
     echo '#!/bin/bash' > /opt/devcontainers/on_create_commands/${UV_PACKAGE_NAME} \
