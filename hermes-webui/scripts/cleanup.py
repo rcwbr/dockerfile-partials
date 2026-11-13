@@ -22,7 +22,10 @@ for cleanup_file in CT.rglob('cleanup'):
     base = '/' + cleanup_file.parent.relative_to(CT).as_posix()
     with open(cleanup_file) as f:
         spec = pathspec.GitIgnoreSpec.from_lines(f)
-    entries = list(spec.match_tree_entries(base, follow_links=False))
+    try:
+        entries = list(spec.match_tree_entries(base, follow_links=False))
+    except FileNotFoundError:
+        continue
     # Phase 1: delete files
     for entry in entries:
         if entry.is_file():
