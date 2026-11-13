@@ -34,7 +34,10 @@ if [ -x "$uv_bin" ]; then
   "$uv_bin" pip install --python "$AGENT_VENV_PYTHON" \
     "faster-whisper==1.2.1" "sounddevice==0.5.5" "numpy==2.4.3"
 else
-  echo "WARNING: uv not found — skipping faster-whisper install" >&2
+  echo "WARNING: uv not found — falling back to pip for faster-whisper install" >&2
+  python3 -m pip install --break-system-packages --no-cache-dir \
+    "faster-whisper==1.2.1" "sounddevice==0.5.5" "numpy==2.4.3" || \
+  echo "WARNING: pip install of faster-whisper also failed — STT will fall back to lazy installation on first use" >&2
 fi
 
 export HERMES_WEBUI_PYTHON="$AGENT_VENV_PYTHON"
